@@ -1,0 +1,17 @@
+{
+  "name": "@saltcorn/record-and-rerun",
+  "version": "0.1.0",
+  "description": "Record and rerun user interactions in Saltcorn applications",
+  "main": "index.js",
+  "scripts": {},
+  "dependencies": {
+    "@saltcorn/data": "^0.2.0",
+    "@saltcorn/markup": "^0.2.0"
+  },
+  "devDependencies": {
+    "jest": "^29.7.0"
+  },
+  "author": "Christian Hugo",
+  "license": "MIT",
+  "repository": "github:saltcorn/record-and-replay"
+}
