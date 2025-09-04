@@ -1,5 +1,8 @@
 const Table = require("@saltcorn/data/models/table");
 const Field = require("@saltcorn/data/models/field");
+const db = require("@saltcorn/data/db");
+
+const path = require("path");
 
 const cfgOpts = async (tableId) => {
   const table = await Table.findOne({ id: tableId });
@@ -31,7 +34,16 @@ const parseDataField = (field) => {
   return { dataTblName, dataField, topFk };
 };
 
+const createTestDirName = (workflowName) =>
+  path.join(
+    __dirname,
+    "playwright",
+    db.getTenantSchema(),
+    workflowName.replace(/[^a-zA-Z0-9_-]/g, "_"),
+  );
+
 module.exports = {
   cfgOpts,
   parseDataField,
+  createTestDirName,
 };

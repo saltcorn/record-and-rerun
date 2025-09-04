@@ -41,6 +41,23 @@ const RecordAndRerun = (() => {
             this.ignoreNextClick = false;
             return;
           }
+
+          // ignore 'Enter' when followed by a synthetic click
+          const element = event.target;
+          if (
+            element.tagName === "BUTTON" &&
+            element.type === "submit" &&
+            !event.pointerType
+          ) {
+            const lastEvent = this.events[this.events.length - 1];
+            if (
+              lastEvent &&
+              lastEvent.type === "keydown" &&
+              lastEvent.key === "Enter"
+            ) {
+              lastEvent.ignore = true;
+            }
+          }
           const selector = getUniqueSelector(event.target);
           const eventData = {
             type: "click",
@@ -49,7 +66,6 @@ const RecordAndRerun = (() => {
           };
           this.events.push(eventData);
           persistEvents(this.events);
-          const currentUrl = new URL(window.location.href);
           if (this.checkUpload()) this.uploadEvents();
         }
       });

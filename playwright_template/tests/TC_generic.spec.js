@@ -26,6 +26,7 @@ test.describe("generic Test Suite", () => {
   });
   test("generic steps", async ({ browser }) => {
     for (const event of testData.events) {
+      if (event.ignore) continue;
       switch (event.type) {
         case "page_info":
           console.log(`Navigating to: ${event.url}`);

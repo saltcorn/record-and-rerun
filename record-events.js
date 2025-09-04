@@ -1,7 +1,6 @@
 const Workflow = require("@saltcorn/data/models/workflow");
 const Form = require("@saltcorn/data/models/form");
 const Table = require("@saltcorn/data/models/table");
-const Field = require("@saltcorn/data/models/field");
 const {
   div,
   button,
@@ -13,7 +12,9 @@ const {
   h5,
 } = require("@saltcorn/markup/tags");
 const { getState } = require("@saltcorn/data/db/state");
-const { cfgOpts, parseDataField } = require("./common");
+const { cfgOpts, parseDataField, createTestDirName } = require("./common");
+
+const fs = require("fs").promises;
 
 const get_state_fields = async () => [];
 
@@ -194,24 +195,28 @@ const init_workflow = async (
   }
 };
 
-const virtual_triggers = (table_id, viewname, { data_field }) => {
+const virtual_triggers = (
+  table_id,
+  viewname,
+  { data_field, workflow_name_field },
+) => {
   const table = Table.findOne({ id: table_id });
   return [
     {
       when_trigger: "Delete",
       table_id: table_id,
       run: async (row) => {
-        console.log("Running virtual trigger: RecordEvents Delete");
-
-        const { dataTblName, dataField, topFk } = parseDataField(data_field);
+        getState().log(5, `Deleting events for workflow id ${row.id}`);
+        const { dataTblName, topFk } = parseDataField(data_field);
         const dataTbl = Table.findOne({ name: dataTblName });
-        if (dataTbl) {
-          console.log(
-            `Deleting events in ${dataTbl.name} where ${topFk}=${row[table.pk_name]}`,
-          );
-          await dataTbl.deleteRows({ [topFk]: row[table.pk_name] });
-        } else {
-          console.log(`Table ${dataTblName} not found`);
+        if (!dataTbl) throw new Error(`Table ${dataTblName} not found`);
+
+        await dataTbl.deleteRows({ [topFk]: row[table.pk_name] });
+        const dedicatedTestDir = createTestDirName(row[workflow_name_field]);
+        try {
+          await fs.rm(dedicatedTestDir, { recursive: true, force: true });
+        } catch (e) {
+          getState().log(2, `Error deleting test directory: ${e.message}`);
         }
       },
     },

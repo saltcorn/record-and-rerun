@@ -1,4 +1,4 @@
-const { cfgOpts, parseDataField } = require("./common");
+const { cfgOpts, parseDataField, createTestDirName } = require("./common");
 const Table = require("@saltcorn/data/models/table");
 
 const { spawn } = require("child_process");
@@ -38,17 +38,23 @@ module.exports = {
       const eventsTable = Table.findOne({ name: dataTblName });
       if (!eventsTable) throw new Error(`Table ${dataTblName} not found`);
 
-      const playwrightDir = path.join(__dirname, "playwright");
-      const events = (await eventsTable.getRows({ [topFk]: row.id })).map(
-        (r) => r[dataField],
+      const dedicatedTestDir = createTestDirName(row[workflow_name_field]);
+      await fs.cp(
+        path.join(__dirname, "playwright_template"),
+        dedicatedTestDir,
+        {
+          recursive: true,
+        },
       );
 
       // put the events into a json file
       await fs.writeFile(
-        path.join(playwrightDir, "events.json"),
+        path.join(dedicatedTestDir, "events.json"),
         JSON.stringify(
           {
-            events,
+            events: (await eventsTable.getRows({ [topFk]: row.id })).map(
+              (r) => r[dataField],
+            ),
             workflow_name: row[workflow_name_field],
           },
           null,
@@ -56,26 +62,12 @@ module.exports = {
         ),
       );
 
-      // if playwrightDir has no node_modules, run npm install
-      if (!(await fs.stat(path.join(playwrightDir, "node_modules")).catch(() => false))) {
-        console.log("Installing Playwright dependencies...");
-        const child = spawn("npm", ["install"], {
-          cwd: playwrightDir,
-          stdio: "inherit",
-        });
-        await new Promise((resolve, reject) => {
-          child.on("exit", (code) => {
-            if (code === 0) resolve();
-            else reject(new Error(`npm install failed with code ${code}`));
-          });
-        });
-      }
 
       // npx playwright install takes longer so I avoid it for now
 
       // run the playwright script
-      const child = spawn(path.join(playwrightDir, "run.sh"), {
-        cwd: playwrightDir,
+      const child = spawn(path.join(dedicatedTestDir, "run.sh"), {
+        cwd: dedicatedTestDir,
         stdio: "inherit",
       });
       await new Promise((resolve, reject) => {
