@@ -187,7 +187,12 @@ const RecordAndRerun = (() => {
         name: attr.name,
         value: attr.value,
       }));
-      if (attrs.length === 0) return getUniqueSelector(element.parentElement);
+      if (attrs.length === 0)
+        return (
+          getUniqueSelector(element.parentElement) +
+          " > " +
+          element.tagName.toLowerCase()
+        );
 
       const attrSelector = attrs
         .map((attr) => `[${attr.name}="${CSS.escape(attr.value)}"]`)
@@ -195,8 +200,8 @@ const RecordAndRerun = (() => {
       const selector = element.tagName.toLowerCase() + attrSelector;
       const matches = document.querySelectorAll(selector);
       if (matches.length > 1) {
-        const parentTagName = element.parentElement.tagName.toLowerCase();
-        return `${parentTagName} > ${selector}`;
+        const parentSelector = getUniqueSelector(element.parentElement);
+        return `${parentSelector} > ${selector}`;
       }
       return selector;
     }
