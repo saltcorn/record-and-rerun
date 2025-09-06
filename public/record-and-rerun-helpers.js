@@ -187,21 +187,22 @@ const RecordAndRerun = (() => {
         name: attr.name,
         value: attr.value,
       }));
-      if (attrs.length === 0)
-        return (
-          getUniqueSelector(element.parentElement) +
-          " > " +
-          element.tagName.toLowerCase()
-        );
-
-      const attrSelector = attrs
-        .map((attr) => `[${attr.name}="${CSS.escape(attr.value)}"]`)
-        .join("");
-      const selector = element.tagName.toLowerCase() + attrSelector;
+      let selector =
+        element.tagName.toLowerCase() +
+        attrs
+          .map((attr) => `[${attr.name}="${CSS.escape(attr.value)}"]`)
+          .join("");
       const matches = document.querySelectorAll(selector);
       if (matches.length > 1) {
-        const parentSelector = getUniqueSelector(element.parentElement);
-        return `${parentSelector} > ${selector}`;
+        const parent = element.parentElement;
+        if (parent) {
+          const siblings = Array.from(parent.children).filter(
+            (el) => el.tagName === element.tagName,
+          );
+          const index = siblings.indexOf(element) + 1;
+          const parentSelector = getUniqueSelector(parent);
+          selector = `${parentSelector} > ${element.tagName.toLowerCase()}:nth-of-type(${index})`;
+        }
       }
       return selector;
     }
