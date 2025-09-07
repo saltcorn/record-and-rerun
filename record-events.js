@@ -1,7 +1,6 @@
 const Workflow = require("@saltcorn/data/models/workflow");
 const Form = require("@saltcorn/data/models/form");
 const Table = require("@saltcorn/data/models/table");
-const Field = require("@saltcorn/data/models/field");
 const {
   div,
   button,
@@ -13,6 +12,9 @@ const {
   h5,
 } = require("@saltcorn/markup/tags");
 const { getState } = require("@saltcorn/data/db/state");
+const { cfgOpts, parseDataField, createTestDirName } = require("./common");
+
+const fs = require("fs").promises;
 
 const get_state_fields = async () => [];
 
@@ -65,10 +67,13 @@ const run = async (
     script(
       domReady(`
         const indicator = document.getElementById('recording-indicator');
+        const newSessionMsg = "⚠️ Workflow initialized — log out and start a new session to begin recording.";
+        const recordingMsg = "🔴 Recording...";
         const currentCfg = RecordAndRerun.getCfg();
         if (currentCfg.viewname === '${viewname}' && currentCfg.recording) {
           document.getElementById('workflow_name').value = currentCfg.workflow['${workflow_name_field}'] || '';
-          indicator.textContent = "🔴 Recording...";
+          indicator.textContent = currentCfg.newSession ? recordingMsg : newSessionMsg;
+          indicator.style.color = currentCfg.newSession ? "red" : "orange";
         }
         else {
           const now = new Date();
@@ -82,10 +87,14 @@ const run = async (
             document.getElementById('workflow_name').value
           );
           if (newWorkflow) {
-            RecordAndRerun.setCfg({ 
-              viewname: '${viewname}', recording: true, workflow: newWorkflow,
+            RecordAndRerun.setCfg({
+              viewname: '${viewname}',
+              recording: true,
+              newSession: false,
+              workflow: newWorkflow,
             });
-            indicator.textContent = "🔴 Recording...";
+            indicator.textContent = newSessionMsg;
+            indicator.style.color = "orange";
           }
           else {
             indicator.textContent = "Error initializing workflow";
@@ -110,22 +119,7 @@ const configuration_workflow = (cfg) =>
         name: "storage",
         disablePreview: true,
         form: async (context) => {
-          const table = await Table.findOne({ id: context.table_id });
-          const fields = table.fields;
-          const nameOpts = fields.filter((f) => f.type?.name === "String");
-          const refs = await Field.find({
-            reftable_name: table.name,
-          });
-          const dataOpts = [];
-          for (const ref of refs) {
-            const refTable = Table.findOne({ id: ref.table_id });
-            const jsonFields = refTable.fields.filter(
-              (f) => f.type?.name === "JSON",
-            );
-            dataOpts.push(
-              jsonFields.map((f) => `${refTable.name}.${f.name}->${ref.name}`),
-            );
-          }
+          const { nameOpts, dataOpts } = await cfgOpts(context.table_id);
           return new Form({
             fields: [
               {
@@ -153,17 +147,6 @@ const configuration_workflow = (cfg) =>
       },
     ],
   });
-
-const parseDataField = (field) => {
-  const match = field.match(/^([^.]+)\.([^-]+)->(.+)$/);
-  if (!match) {
-    throw new Error(
-      "data_field must be of the form ref_table.json_field->ref_field",
-    );
-  }
-  const [, dataTblName, dataField, topFk] = match;
-  return { dataTblName, dataField, topFk };
-};
 
 const upload_events = async (
   table_id,
@@ -212,6 +195,34 @@ const init_workflow = async (
   }
 };
 
+const virtual_triggers = (
+  table_id,
+  viewname,
+  { data_field, workflow_name_field },
+) => {
+  const table = Table.findOne({ id: table_id });
+  return [
+    {
+      when_trigger: "Delete",
+      table_id: table_id,
+      run: async (row) => {
+        getState().log(5, `Deleting events for workflow id ${row.id}`);
+        const { dataTblName, topFk } = parseDataField(data_field);
+        const dataTbl = Table.findOne({ name: dataTblName });
+        if (!dataTbl) throw new Error(`Table ${dataTblName} not found`);
+
+        await dataTbl.deleteRows({ [topFk]: row[table.pk_name] });
+        const dedicatedTestDir = createTestDirName(row[workflow_name_field]);
+        try {
+          await fs.rm(dedicatedTestDir, { recursive: true, force: true });
+        } catch (e) {
+          getState().log(2, `Error deleting test directory: ${e.message}`);
+        }
+      },
+    },
+  ];
+};
+
 module.exports = {
   name: "RecordEvents",
   description: "Record user interactions (workflows)",
@@ -219,4 +230,5 @@ module.exports = {
   run,
   routes: { upload_events, init_workflow },
   get_state_fields,
+  virtual_triggers,
 };

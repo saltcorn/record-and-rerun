@@ -6,7 +6,8 @@
   "scripts": {},
   "dependencies": {
     "@saltcorn/data": "^0.2.0",
-    "@saltcorn/markup": "^0.2.0"
+    "@saltcorn/markup": "^0.2.0",
+    "@playwright/test": "1.52.0"
   },
   "devDependencies": {
     "jest": "^29.7.0"

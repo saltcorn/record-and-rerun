@@ -5,22 +5,113 @@ const RecordAndRerun = (() => {
       this.viewname = cfg.viewname;
       this.workflow = cfg.workflow;
       this.recording = cfg.recording || false;
-      if (this.recording) this.startRecording();
+      this.newSession = cfg.newSession || false;
+      this.currentUrl = new URL(window.location.href);
+      if (this.currentUrl.pathname === "/auth/login") {
+        this.newSession = true;
+        const oldCfg = getCfg();
+        setCfg({ ...oldCfg, newSession: true });
+      }
+      if (this.recording && this.newSession) this.startRecording();
+      this.ignoreNextClick = false;
+      this.initListeners();
+    }
 
-      document.addEventListener("click", (event) => {
-        if (this.recording) {
-          const clickedElement = event.target;
+    checkUpload() {
+      if (this.events.length >= 5 && this.currentUrl.pathname !== "/auth/login")
+        this.uploadEvents();
+    }
+
+    initListeners() {
+      document.addEventListener("keydown", (e) => {
+        if (this.recording && this.newSession) {
           this.events.push({
-            type: "click",
-            tag: clickedElement.tagName,
-            id: clickedElement.id,
-            classes: clickedElement.className,
-            x: event.clientX,
-            y: event.clientY,
+            type: "keydown",
+            key: e.key,
+            code: e.code,
             timestamp: new Date().toISOString(),
           });
           persistEvents(this.events);
-          if (this.events.length >= 10) this.uploadEvents();
+        }
+      });
+
+      document.addEventListener("click", (event) => {
+        if (this.recording && this.newSession) {
+          if (this.ignoreNextClick) {
+            this.ignoreNextClick = false;
+            return;
+          }
+
+          // ignore 'Enter' when followed by a synthetic click
+          const element = event.target;
+          if (
+            element.tagName === "BUTTON" &&
+            element.type === "submit" &&
+            !event.pointerType
+          ) {
+            const lastEvent = this.events[this.events.length - 1];
+            if (
+              lastEvent &&
+              lastEvent.type === "keydown" &&
+              lastEvent.key === "Enter"
+            ) {
+              lastEvent.ignore = true;
+            }
+          }
+          const selector = getUniqueSelector(event.target);
+          const eventData = {
+            type: "click",
+            selector: selector || null,
+            timestamp: new Date().toISOString(),
+          };
+          this.events.push(eventData);
+          persistEvents(this.events);
+          if (this.checkUpload()) this.uploadEvents();
+        }
+      });
+
+      document.addEventListener("mouseup", () => {
+        if (this.recording && this.newSession) {
+          const selected = window.getSelection();
+          const text = selected.toString().trim();
+          if (text) {
+            this.ignoreNextClick = true;
+            if (
+              confirm("Assert that the following text is present:\n\n" + text)
+            ) {
+              this.events.push({
+                type: "assert_text",
+                text: text,
+                timestamp: new Date().toISOString(),
+              });
+              persistEvents(this.events);
+              if (this.checkUpload()) this.uploadEvents();
+              selected.removeAllRanges();
+            }
+          }
+        }
+      });
+
+      document.addEventListener("dblclick", () => {
+        if (this.recording && this.newSession) {
+          const selected = window.getSelection();
+          const text = selected.toString().trim();
+          if (text) {
+            this.ignoreNextClick = true;
+
+            if (
+              confirm("Assert that the following text is present:\n\n" + text)
+            ) {
+              this.events.push({
+                type: "assert_text",
+                text: text,
+                timestamp: new Date().toISOString(),
+              });
+              persistEvents(this.events);
+              if (this.checkUpload()) this.uploadEvents();
+              selected.removeAllRanges();
+            }
+          }
         }
       });
     }
@@ -35,7 +126,7 @@ const RecordAndRerun = (() => {
         timestamp: new Date().toISOString(),
       });
       persistEvents(this.events);
-      if (this.events.length >= 10) this.uploadEvents();
+      if (this.checkUpload()) this.uploadEvents();
     }
 
     stopRecording() {
@@ -80,6 +171,43 @@ const RecordAndRerun = (() => {
     }
   }
 
+  const getUniqueSelector = (element) => {
+    if (element === document.body) return "body";
+    if (element.id) return `#${element.id}`;
+    if (element.tagName === "BUTTON" && element.type === "submit") {
+      const form = element.closest("form");
+      if (form) {
+        const actionWithoutDomain = form.action.startsWith("http")
+          ? new URL(form.action).pathname
+          : form.action;
+        return `form[action="${actionWithoutDomain}"] button[type="submit"]`;
+      }
+    } else {
+      const attrs = Array.from(element.attributes).map((attr) => ({
+        name: attr.name,
+        value: attr.value,
+      }));
+      let selector =
+        element.tagName.toLowerCase() +
+        attrs
+          .map((attr) => `[${attr.name}="${CSS.escape(attr.value)}"]`)
+          .join("");
+      const matches = document.querySelectorAll(selector);
+      if (matches.length > 1) {
+        const parent = element.parentElement;
+        if (parent) {
+          const siblings = Array.from(parent.children).filter(
+            (el) => el.tagName === element.tagName,
+          );
+          const index = siblings.indexOf(element) + 1;
+          const parentSelector = getUniqueSelector(parent);
+          selector = `${parentSelector} > ${element.tagName.toLowerCase()}:nth-of-type(${index})`;
+        }
+      }
+      return selector;
+    }
+  };
+
   const initWorkflow = async (viewname, workflowName) => {
     try {
       const response = await fetch(`/view/${viewname}/init_workflow`, {
@@ -101,9 +229,9 @@ const RecordAndRerun = (() => {
   };
 
   const getCfg = () =>
-    JSON.parse(localStorage.getItem("web_recording_cfg") || "{}");
+    JSON.parse(sessionStorage.getItem("web_recording_cfg") || "{}");
   const setCfg = (cfg) =>
-    localStorage.setItem("web_recording_cfg", JSON.stringify(cfg));
+    sessionStorage.setItem("web_recording_cfg", JSON.stringify(cfg));
 
   const persistEvents = (events) => {
     const oldCfg = getCfg();
