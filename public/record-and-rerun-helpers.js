@@ -21,6 +21,10 @@ const RecordAndRerun = (() => {
         this.uploadEvents();
     }
 
+    recordingActive() {
+      return this.recording && this.newSession;
+    }
+
     initListeners() {
       document.addEventListener("keydown", (e) => {
         if (this.recording && this.newSession) {
@@ -227,11 +231,40 @@ const RecordAndRerun = (() => {
     return cfg.events || [];
   };
 
+  const showRecordingBox = (workflowName, stopCallback) => {
+    const box = document.createElement("div");
+    box.className = "recording-bar";
+
+    const nameEl = document.createElement("span");
+    nameEl.textContent = `Recording: ${workflowName}`;
+
+    const stopBtn = document.createElement("button");
+    stopBtn.className = "stop-btn";
+    stopBtn.innerHTML = `
+      <svg viewBox="0 0 24 24">
+        <rect x="6" y="6" width="12" height="12"></rect>
+      </svg>
+      Stop
+    `;
+    stopBtn.onclick = stopCallback;
+
+    box.appendChild(nameEl);
+    box.appendChild(stopBtn);
+    document.body.appendChild(box);
+  };
+
+  const hideRecordingBox = () => {
+    const box = document.querySelector(".recording-bar");
+    if (box) box.remove();
+  };
+
   return {
     getCfg,
     setCfg,
     initWorkflow,
     Recorder,
     recorder: new Recorder(getCfg()),
+    showRecordingBox,
+    hideRecordingBox,
   };
 })();

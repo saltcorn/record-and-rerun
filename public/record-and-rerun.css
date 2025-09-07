@@ -15,3 +15,44 @@
 .custom-menu div:hover {
   background: #eee;
 }
+
+.recording-bar {
+  position: fixed;
+  bottom: 20px;
+  left: 20px;
+  background: #d32f2f;
+  color: white;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 10px 16px;
+  border-radius: 10px;
+  font-family: sans-serif;
+  font-size: 16px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  z-index: 9999;
+  width: fit-content;
+}
+.recording-bar span {
+  font-weight: bold;
+}
+.stop-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: #b71c1c;
+  border: none;
+  color: white;
+  padding: 6px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 14px;
+}
+.stop-btn:hover {
+  background: #9a0007;
+}
+.stop-btn svg {
+  width: 14px;
+  height: 14px;
+  fill: white;
+}

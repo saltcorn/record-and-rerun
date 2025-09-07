@@ -1,7 +1,7 @@
 const Workflow = require("@saltcorn/data/models/workflow");
 const Form = require("@saltcorn/data/models/form");
 const Plugin = require("@saltcorn/data/models/plugin");
-const { domReady, code } = require("@saltcorn/markup/tags");
+const { script, domReady, code } = require("@saltcorn/markup/tags");
 const { rerun_user_workflow } = require("./actions");
 const { getState } = require("@saltcorn/data/db/state");
 const db = require("@saltcorn/data/db");
@@ -220,6 +220,23 @@ module.exports = {
       css: `/plugins/public/record-and-rerun@${
         require("./package.json").version
       }/record-and-rerun.css`,
+    },
+    {
+      headerTag: script(
+        domReady(`
+  const { recording, newSession, workflowName } = RecordAndRerun.getCfg();
+  if (recording && newSession) {
+    RecordAndRerun.showRecordingBox(workflowName, () => {
+      RecordAndRerun.recorder.stopRecording();
+      const oldCfg = RecordAndRerun.getCfg();
+      RecordAndRerun.setCfg({ ...oldCfg, recording: false, newSession: false });
+      RecordAndRerun.hideRecordingBox();
+      const indicator = document.getElementById('recording-indicator');
+      if (indicator) indicator.textContent = "";
+    });
+  }
+  `),
+      ),
     },
   ],
   configuration_workflow,
