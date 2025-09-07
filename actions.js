@@ -62,9 +62,6 @@ module.exports = {
         ),
       );
 
-
-      // npx playwright install takes longer so I avoid it for now
-
       // run the playwright script
       const child = spawn(path.join(dedicatedTestDir, "run.sh"), {
         cwd: dedicatedTestDir,
@@ -77,7 +74,10 @@ module.exports = {
         });
       });
 
-      return { success: true };
+      return {
+        success: true,
+        notify_success: "The workflow completed successfully",
+      };
     },
     requireRow: true,
   },

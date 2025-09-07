@@ -37,7 +37,7 @@ test.describe("generic Test Suite", () => {
           console.log(`Clicking on: ${event.selector}`);
           const element = await page.locator(event.selector);
           await element.click();
-          await page.waitForTimeout(1000);
+          await page.waitForTimeout(500);
           break;
         case "keydown":
           console.log(`Typing: ${event.key}`);

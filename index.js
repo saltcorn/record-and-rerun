@@ -17,7 +17,7 @@ const configuration_workflow = () =>
           return new Form({
             blurb:
               `The install Playwright button runs ${code(
-                "npx install playwright"
+                "npx install playwright",
               )}.` +
               "You can skip this if your Server already has Playwright installed.",
             additionalHeaders: [
@@ -96,6 +96,7 @@ const routes = (config) => {
       method: "post",
       callback: async (req, res) => {
         try {
+          getState().log(5, "Starting Playwright installation");
           let plugin = await Plugin.findOne({ name: "record-and-rerun" });
           if (!plugin) {
             plugin = await Plugin.findOne({
@@ -122,16 +123,19 @@ const routes = (config) => {
 
           child.on("exit", async (code, signal) => {
             if (code === 0) {
+              getState().log(5, "Playwright installation completed");
               plugin.configuration = {
                 ...(plugin.configuration || {}),
                 playwright_installation_finished: new Date().valueOf(),
                 playwright_installation_error: null,
               };
             } else {
+              const msg = `Playwright installation failed with code ${code} and signal ${signal}`;
+              getState().log(2, msg);
               plugin.configuration = {
                 ...(plugin.configuration || {}),
                 playwright_installation_finished: null,
-                playwright_installation_error: `Exited with code ${code} and signal ${signal}`,
+                playwright_installation_error: msg,
               };
             }
             await plugin.upsert();
@@ -142,6 +146,7 @@ const routes = (config) => {
           });
 
           child.on("error", async (err) => {
+            getState().log(2, `Playwright installation error: ${err.message}`);
             const errorCfg = {
               ...(plugin.configuration || {}),
               playwright_installation_finished: null,
@@ -156,10 +161,9 @@ const routes = (config) => {
           });
           res.json({ notify: "Playwright installation started." });
         } catch (e) {
-          console.log("Error starting Playwright installation:", e);
-          res
-            .status(500)
-            .json({ notify: `Error starting Playwright installation: ${e}` });
+          const msg = `Error starting Playwright installation: ${e.message}`;
+          getState().log(2, msg);
+          res.status(500).json({ error: msg });
         }
       },
     },
@@ -169,6 +173,7 @@ const routes = (config) => {
       method: "get",
       callback: async (req, res) => {
         try {
+          getState().log(5, "Checking Playwright installation status");
           let plugin = await Plugin.findOne({ name: "record-and-rerun" });
           if (!plugin) {
             plugin = await Plugin.findOne({
@@ -187,12 +192,11 @@ const routes = (config) => {
             installError,
           });
         } catch (e) {
-          console.log("Error checking Playwright installation:", e);
-          res
-            .status(500)
-            .json({
-              installError: `Error checking Playwright installation: ${e}`,
-            });
+          const msg = `Error checking Playwright installation: ${e.message}`;
+          getState().log(2, msg);
+          res.status(500).json({
+            error: msg,
+          });
         }
       },
     },
