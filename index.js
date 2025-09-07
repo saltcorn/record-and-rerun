@@ -216,6 +216,11 @@ module.exports = {
         require("./package.json").version
       }/record-and-rerun-helpers.js`,
     },
+    {
+      css: `/plugins/public/record-and-rerun@${
+        require("./package.json").version
+      }/record-and-rerun.css`,
+    },
   ],
   configuration_workflow,
   routes,

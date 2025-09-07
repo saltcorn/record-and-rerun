@@ -13,7 +13,6 @@ const RecordAndRerun = (() => {
         setCfg({ ...oldCfg, newSession: true });
       }
       if (this.recording && this.newSession) this.startRecording();
-      this.ignoreNextClick = false;
       this.initListeners();
     }
 
@@ -36,11 +35,11 @@ const RecordAndRerun = (() => {
       });
 
       document.addEventListener("click", (event) => {
+        const assertMenu = document.querySelector(".custom-menu");
+        if (assertMenu) assertMenu.remove();
         if (this.recording && this.newSession) {
-          if (this.ignoreNextClick) {
-            this.ignoreNextClick = false;
-            return;
-          }
+          // ignore clicks on the custom context menu
+          if (event.target.closest(".custom-menu")) return;
 
           // ignore 'Enter' when followed by a synthetic click
           const element = event.target;
@@ -70,15 +69,20 @@ const RecordAndRerun = (() => {
         }
       });
 
-      document.addEventListener("mouseup", () => {
+      document.addEventListener("contextmenu", (event) => {
         if (this.recording && this.newSession) {
           const selected = window.getSelection();
           const text = selected.toString().trim();
-          if (text) {
-            this.ignoreNextClick = true;
-            if (
-              confirm("Assert that the following text is present:\n\n" + text)
-            ) {
+          if (text.length > 0) {
+            event.preventDefault();
+            const menu = document.createElement("div");
+            menu.className = "custom-menu";
+            menu.style.top = event.pageY + "px";
+            menu.style.left = event.pageX + "px";
+            const item = document.createElement("div");
+            item.textContent = "Assert Text is present";
+            item.onclick = () => {
+              console.log("Assert Text is present clicked");
               this.events.push({
                 type: "assert_text",
                 text: text,
@@ -87,30 +91,9 @@ const RecordAndRerun = (() => {
               persistEvents(this.events);
               if (this.checkUpload()) this.uploadEvents();
               selected.removeAllRanges();
-            }
-          }
-        }
-      });
-
-      document.addEventListener("dblclick", () => {
-        if (this.recording && this.newSession) {
-          const selected = window.getSelection();
-          const text = selected.toString().trim();
-          if (text) {
-            this.ignoreNextClick = true;
-
-            if (
-              confirm("Assert that the following text is present:\n\n" + text)
-            ) {
-              this.events.push({
-                type: "assert_text",
-                text: text,
-                timestamp: new Date().toISOString(),
-              });
-              persistEvents(this.events);
-              if (this.checkUpload()) this.uploadEvents();
-              selected.removeAllRanges();
-            }
+            };
+            menu.appendChild(item);
+            document.body.appendChild(menu);
           }
         }
       });
