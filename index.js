@@ -1,7 +1,7 @@
 const Workflow = require("@saltcorn/data/models/workflow");
 const Form = require("@saltcorn/data/models/form");
 const Plugin = require("@saltcorn/data/models/plugin");
-const { domReady, code } = require("@saltcorn/markup/tags");
+const { script, domReady, code } = require("@saltcorn/markup/tags");
 const { rerun_user_workflow } = require("./actions");
 const { getState } = require("@saltcorn/data/db/state");
 const db = require("@saltcorn/data/db");
@@ -16,10 +16,12 @@ const configuration_workflow = () =>
         form: async (context) => {
           return new Form({
             blurb:
-              `The install Playwright button runs ${code(
+              "This plugin allows recording user interactions and rerunning them later. " +
+              "For this you will need the Playwright framework installed on your server. " +
+              `Click 'install Playwright' to run ${code(
                 "npx install playwright",
               )}.` +
-              "You can skip this if your Server already has Playwright installed.",
+              "or skip it if your server already has Playwright installed.",
             additionalHeaders: [
               {
                 headerTag: `<script>
@@ -215,6 +217,28 @@ module.exports = {
       script: `/plugins/public/record-and-rerun@${
         require("./package.json").version
       }/record-and-rerun-helpers.js`,
+    },
+    {
+      css: `/plugins/public/record-and-rerun@${
+        require("./package.json").version
+      }/record-and-rerun.css`,
+    },
+    {
+      headerTag: script(
+        domReady(`
+  const { recording, newSession, workflowName } = RecordAndRerun.getCfg();
+  if (recording && newSession) {
+    RecordAndRerun.showRecordingBox(workflowName, () => {
+      RecordAndRerun.recorder.stopRecording();
+      const oldCfg = RecordAndRerun.getCfg();
+      RecordAndRerun.setCfg({ ...oldCfg, recording: false, newSession: false });
+      RecordAndRerun.hideRecordingBox();
+      const indicator = document.getElementById('recording-indicator');
+      if (indicator) indicator.textContent = "";
+    });
+  }
+  `),
+      ),
     },
   ],
   configuration_workflow,

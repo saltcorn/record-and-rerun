@@ -13,13 +13,16 @@ const RecordAndRerun = (() => {
         setCfg({ ...oldCfg, newSession: true });
       }
       if (this.recording && this.newSession) this.startRecording();
-      this.ignoreNextClick = false;
       this.initListeners();
     }
 
     checkUpload() {
       if (this.events.length >= 5 && this.currentUrl.pathname !== "/auth/login")
         this.uploadEvents();
+    }
+
+    recordingActive() {
+      return this.recording && this.newSession;
     }
 
     initListeners() {
@@ -36,11 +39,11 @@ const RecordAndRerun = (() => {
       });
 
       document.addEventListener("click", (event) => {
+        const assertMenu = document.querySelector(".custom-menu");
+        if (assertMenu) assertMenu.remove();
         if (this.recording && this.newSession) {
-          if (this.ignoreNextClick) {
-            this.ignoreNextClick = false;
-            return;
-          }
+          // ignore clicks on the custom context menu
+          if (event.target.closest(".custom-menu")) return;
 
           // ignore 'Enter' when followed by a synthetic click
           const element = event.target;
@@ -70,15 +73,20 @@ const RecordAndRerun = (() => {
         }
       });
 
-      document.addEventListener("mouseup", () => {
+      document.addEventListener("contextmenu", (event) => {
         if (this.recording && this.newSession) {
           const selected = window.getSelection();
           const text = selected.toString().trim();
-          if (text) {
-            this.ignoreNextClick = true;
-            if (
-              confirm("Assert that the following text is present:\n\n" + text)
-            ) {
+          if (text.length > 0) {
+            event.preventDefault();
+            const menu = document.createElement("div");
+            menu.className = "custom-menu";
+            menu.style.top = event.pageY + "px";
+            menu.style.left = event.pageX + "px";
+            const item = document.createElement("div");
+            item.textContent = "Assert Text is present";
+            item.onclick = () => {
+              console.log("Assert Text is present clicked");
               this.events.push({
                 type: "assert_text",
                 text: text,
@@ -87,30 +95,9 @@ const RecordAndRerun = (() => {
               persistEvents(this.events);
               if (this.checkUpload()) this.uploadEvents();
               selected.removeAllRanges();
-            }
-          }
-        }
-      });
-
-      document.addEventListener("dblclick", () => {
-        if (this.recording && this.newSession) {
-          const selected = window.getSelection();
-          const text = selected.toString().trim();
-          if (text) {
-            this.ignoreNextClick = true;
-
-            if (
-              confirm("Assert that the following text is present:\n\n" + text)
-            ) {
-              this.events.push({
-                type: "assert_text",
-                text: text,
-                timestamp: new Date().toISOString(),
-              });
-              persistEvents(this.events);
-              if (this.checkUpload()) this.uploadEvents();
-              selected.removeAllRanges();
-            }
+            };
+            menu.appendChild(item);
+            document.body.appendChild(menu);
           }
         }
       });
@@ -174,6 +161,16 @@ const RecordAndRerun = (() => {
   const getUniqueSelector = (element) => {
     if (element === document.body) return "body";
     if (element.id) return `#${element.id}`;
+    if (element.hasAttribute("data-row-id")) {
+      return `${element.tagName.toLowerCase()}[data-row-id="${CSS.escape(
+        element.getAttribute("data-row-id"),
+      )}"]`;
+    }
+    if (element.hasAttribute("row-key")) {
+      return `${element.tagName.toLowerCase()}[row-key="${CSS.escape(
+        element.getAttribute("row-key"),
+      )}"]`;
+    }
     if (element.tagName === "BUTTON" && element.type === "submit") {
       const form = element.closest("form");
       if (form) {
@@ -244,11 +241,40 @@ const RecordAndRerun = (() => {
     return cfg.events || [];
   };
 
+  const showRecordingBox = (workflowName, stopCallback) => {
+    const box = document.createElement("div");
+    box.className = "recording-bar";
+
+    const nameEl = document.createElement("span");
+    nameEl.textContent = `Recording: ${workflowName}`;
+
+    const stopBtn = document.createElement("button");
+    stopBtn.className = "stop-btn";
+    stopBtn.innerHTML = `
+      <svg viewBox="0 0 24 24">
+        <rect x="6" y="6" width="12" height="12"></rect>
+      </svg>
+      Stop
+    `;
+    stopBtn.onclick = stopCallback;
+
+    box.appendChild(nameEl);
+    box.appendChild(stopBtn);
+    document.body.appendChild(box);
+  };
+
+  const hideRecordingBox = () => {
+    const box = document.querySelector(".recording-bar");
+    if (box) box.remove();
+  };
+
   return {
     getCfg,
     setCfg,
     initWorkflow,
     Recorder,
     recorder: new Recorder(getCfg()),
+    showRecordingBox,
+    hideRecordingBox,
   };
 })();

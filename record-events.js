@@ -92,6 +92,7 @@ const run = async (
               recording: true,
               newSession: false,
               workflow: newWorkflow,
+              workflowName: document.getElementById('workflow_name').value
             });
             indicator.textContent = newSessionMsg;
             indicator.style.color = "orange";
