@@ -16,10 +16,12 @@ const configuration_workflow = () =>
         form: async (context) => {
           return new Form({
             blurb:
-              `The install Playwright button runs ${code(
+              "This plugin allows recording user interactions and rerunning them later. " +
+              "For this you will need the Playwright framework installed on your server. " +
+              `Click 'install Playwright' to run ${code(
                 "npx install playwright",
               )}.` +
-              "You can skip this if your Server already has Playwright installed.",
+              "or skip it if your server already has Playwright installed.",
             additionalHeaders: [
               {
                 headerTag: `<script>

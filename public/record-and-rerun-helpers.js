@@ -161,6 +161,16 @@ const RecordAndRerun = (() => {
   const getUniqueSelector = (element) => {
     if (element === document.body) return "body";
     if (element.id) return `#${element.id}`;
+    if (element.hasAttribute("data-row-id")) {
+      return `${element.tagName.toLowerCase()}[data-row-id="${CSS.escape(
+        element.getAttribute("data-row-id"),
+      )}"]`;
+    }
+    if (element.hasAttribute("row-key")) {
+      return `${element.tagName.toLowerCase()}[row-key="${CSS.escape(
+        element.getAttribute("row-key"),
+      )}"]`;
+    }
     if (element.tagName === "BUTTON" && element.type === "submit") {
       const form = element.closest("form");
       if (form) {
