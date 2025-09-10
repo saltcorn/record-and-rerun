@@ -19,7 +19,7 @@ const configuration_workflow = () =>
               "This plugin allows recording user interactions and rerunning them later. " +
               "For this you will need the Playwright framework installed on your server. " +
               `Click 'install Playwright' to run ${code(
-                "npx install playwright",
+                "npm exec install playwright",
               )}.` +
               "or skip it if your server already has Playwright installed.",
             additionalHeaders: [
@@ -106,7 +106,7 @@ const routes = (config) => {
             });
           }
 
-          const child = spawn("npx", ["playwright", "install"], {
+          const child = spawn("npm", ["exec", "playwright", "install"], {
             stdio: "inherit",
             cwd: __dirname,
           });
@@ -123,7 +123,7 @@ const routes = (config) => {
             tenant: db.getTenantSchema(),
           });
 
-          child.on("exit", async (code, signal) => {
+          child.on("close", async (code, signal) => {
             if (code === 0) {
               getState().log(5, "Playwright installation completed");
               plugin.configuration = {
