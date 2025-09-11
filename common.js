@@ -1,4 +1,5 @@
 const Table = require("@saltcorn/data/models/table");
+const File = require("@saltcorn/data/models/file");
 const Field = require("@saltcorn/data/models/field");
 const db = require("@saltcorn/data/db");
 
@@ -20,7 +21,11 @@ const cfgOpts = async (tableId) => {
     );
   }
 
-  return { nameOpts, dataOpts };
+  const fileOpts = fields.filter((f) => f.type === "File").map((f) => f.name);
+
+  const directories = await File.find({ isDirectory: true });
+  const directoryOpts = directories.map((d) => d.path_to_serve);
+  return { nameOpts, dataOpts, fileOpts, directoryOpts };
 };
 
 const parseDataField = (field) => {
@@ -35,12 +40,7 @@ const parseDataField = (field) => {
 };
 
 const createTestDirName = (workflowName) =>
-  path.join(
-    __dirname,
-    "playwright",
-    db.getTenantSchema(),
-    workflowName.replace(/[^a-zA-Z0-9_-]/g, "_"),
-  );
+  path.join(__dirname, "playwright", db.getTenantSchema(), workflowName);
 
 module.exports = {
   cfgOpts,

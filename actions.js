@@ -1,5 +1,6 @@
 const { cfgOpts, parseDataField, createTestDirName } = require("./common");
 const Table = require("@saltcorn/data/models/table");
+const File = require("@saltcorn/data/models/file");
 
 const { spawn } = require("child_process");
 const path = require("path");
@@ -9,7 +10,9 @@ module.exports = {
   rerun_user_workflow: {
     description: "Rerun a recorded user workflow",
     configFields: async ({ table }) => {
-      const { nameOpts, dataOpts } = await cfgOpts(table.id);
+      const { nameOpts, dataOpts, fileOpts, directoryOpts } = await cfgOpts(
+        table.id,
+      );
       return [
         {
           name: "workflow_name_field",
@@ -30,15 +33,43 @@ module.exports = {
             options: dataOpts.map((f) => f).join(),
           },
         },
+        {
+          name: "html_report_file",
+          label: "HTML Report File Field",
+          type: "String",
+          sublabel: "File field to store HTML report (optional)",
+          attributes: {
+            options: fileOpts,
+          },
+        },
+        {
+          name: "html_report_file_directory",
+          label: "HTML Report File Directory",
+          type: "String",
+          sublabel: "Directory to store HTML reports",
+          showIf: { html_report_file: fileOpts },
+          attributes: {
+            options: directoryOpts,
+          },
+        },
       ];
     },
     run: async ({ table, row, configuration }) => {
-      const { workflow_name_field, data_field } = configuration;
+      const {
+        workflow_name_field,
+        data_field,
+        html_report_file,
+        html_report_file_directory,
+      } = configuration;
       const { dataTblName, dataField, topFk } = parseDataField(data_field);
       const eventsTable = Table.findOne({ name: dataTblName });
       if (!eventsTable) throw new Error(`Table ${dataTblName} not found`);
 
-      const dedicatedTestDir = createTestDirName(row[workflow_name_field]);
+      const safeWorkflowName = row[workflow_name_field].replace(
+        /[^a-zA-Z0-9_-]/g,
+        "_",
+      );
+      const dedicatedTestDir = createTestDirName(safeWorkflowName);
       await fs.cp(
         path.join(__dirname, "playwright_template"),
         dedicatedTestDir,
@@ -68,9 +99,26 @@ module.exports = {
         stdio: "inherit",
       });
       await new Promise((resolve, reject) => {
-        child.on("exit", (code) => {
-          if (code === 0) resolve();
-          else reject(new Error(`Playwright tests failed with code ${code}`));
+        child.on("exit", async (code) => {
+          if (code === 0) {
+            if (html_report_file) {
+              const reportFile = await File.from_file_on_disk(
+                "index.html",
+                path.join(dedicatedTestDir, "my-report"),
+              );
+              const newPath = File.get_new_path(
+                path.join(
+                  html_report_file_directory || "/",
+                  `${safeWorkflowName}.html`,
+                ),
+                true,
+              );
+              const newName = path.basename(newPath);
+              await reportFile.rename(newName);
+              await reportFile.move_to_dir(html_report_file_directory || "/");
+            }
+            resolve();
+          } else reject(new Error(`Playwright tests failed with code ${code}`));
         });
       });
 
