@@ -213,7 +213,11 @@ const virtual_triggers = (
         if (!dataTbl) throw new Error(`Table ${dataTblName} not found`);
 
         await dataTbl.deleteRows({ [topFk]: row[table.pk_name] });
-        const dedicatedTestDir = createTestDirName(row[workflow_name_field]);
+        const safeWorkflowName = row[workflow_name_field].replace(
+          /[^a-zA-Z0-9_-]/g,
+          "_",
+        );
+        const dedicatedTestDir = createTestDirName(safeWorkflowName);
         try {
           await fs.rm(dedicatedTestDir, { recursive: true, force: true });
         } catch (e) {
