@@ -116,6 +116,11 @@ module.exports = {
               const newName = path.basename(newPath);
               await reportFile.rename(newName);
               await reportFile.move_to_dir(html_report_file_directory || "/");
+
+              await table.updateRow(
+                { [html_report_file]: reportFile.path_to_serve },
+                row[table.pk_name],
+              );
             }
             resolve();
           } else reject(new Error(`Playwright tests failed with code ${code}`));
