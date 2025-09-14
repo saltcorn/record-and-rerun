@@ -1,10 +1,92 @@
-const { cfgOpts, parseDataField, createTestDirName } = require("./common");
+const {
+  cfgOpts,
+  parseDataField,
+  createTestDirName,
+  preparePlaywrightDir,
+  runPlaywrightScript,
+  copyHtmlReport,
+  readBenchmarkFiles,
+  calcStats,
+} = require("./common");
 const Table = require("@saltcorn/data/models/table");
-const File = require("@saltcorn/data/models/file");
 
-const { spawn } = require("child_process");
-const path = require("path");
-const fs = require("fs").promises;
+/**
+ * Helper class to rerun a recorded user workflow
+ */
+class RerunHelper {
+  constructor(
+    table,
+    row,
+    {
+      num_iterations,
+      workflow_name_field,
+      data_field,
+      html_report_file,
+      html_report_directory,
+      benchmark_data_field,
+    },
+  ) {
+    this.wfTable = table;
+    this.row = row;
+    this.dataTblRel = parseDataField(data_field);
+    this.isBenchmark = !!benchmark_data_field;
+    this.benchmarkRel = this.isBenchmark
+      ? parseDataField(benchmark_data_field)
+      : undefined;
+    this.numIterations = num_iterations || 1;
+    this.workflowName = row[workflow_name_field].replace(
+      /[^a-zA-Z0-9_-]/g,
+      "_",
+    );
+    this.testDir = createTestDirName(this.workflowName);
+    this.htmlReportFile = html_report_file;
+    this.htmlReportDir = html_report_directory;
+  }
+
+  async rerun() {
+    await preparePlaywrightDir(
+      this.testDir,
+      this.workflowName,
+      await this.loadEvents(),
+    );
+    await runPlaywrightScript(
+      this.testDir,
+      this.numIterations,
+      this.benchmarkRel,
+    );
+    if (this.htmlReportFile && this.htmlReportDir) {
+      const pathToServe = await copyHtmlReport(
+        this.testDir,
+        this.workflowName,
+        this.htmlReportDir,
+      );
+      await this.wfTable.updateRow(
+        { [this.htmlReportFile]: pathToServe },
+        this.row[this.wfTable.pk_name],
+      );
+    }
+    if (this.benchmarkRel) {
+      const allRunStats = await readBenchmarkFiles(this.testDir);
+      const benchJson = await calcStats(allRunStats);
+      const { dataTblName, topFk, dataField } = this.benchmarkRel;
+      const dataTbl = Table.findOne({ name: dataTblName });
+      if (!dataTbl) throw new Error("Benchmark data table not found");
+      const benchRow = {
+        [topFk]: this.row.id,
+        [dataField]: benchJson,
+      };
+      await dataTbl.insertRow(benchRow);
+    }
+  }
+
+  async loadEvents() {
+    const { dataTblName, topFk, dataField } = this.dataTblRel;
+    const dataTbl = Table.findOne({ name: dataTblName });
+    if (!dataTbl) throw new Error("Data table not found");
+    const rows = await dataTbl.getRows({ [topFk]: this.row.id });
+    return rows.map((r) => r[dataField]);
+  }
+}
 
 module.exports = {
   rerun_user_workflow: {
@@ -43,8 +125,8 @@ module.exports = {
           },
         },
         {
-          name: "html_report_file_directory",
-          label: "HTML Report File Directory",
+          name: "html_report_directory",
+          label: "HTML Report Directory",
           type: "String",
           sublabel: "Directory to store HTML reports",
           showIf: { html_report_file: fileOpts },
@@ -55,78 +137,60 @@ module.exports = {
       ];
     },
     run: async ({ table, row, configuration }) => {
-      const {
-        workflow_name_field,
-        data_field,
-        html_report_file,
-        html_report_file_directory,
-      } = configuration;
-      const { dataTblName, dataField, topFk } = parseDataField(data_field);
-      const eventsTable = Table.findOne({ name: dataTblName });
-      if (!eventsTable) throw new Error(`Table ${dataTblName} not found`);
+      const helper = new RerunHelper(table, row, configuration);
+      await helper.rerun();
+      return {
+        success: true,
+        notify_success: "The workflow completed successfully",
+      };
+    },
+    requireRow: true,
+  },
 
-      const safeWorkflowName = row[workflow_name_field].replace(
-        /[^a-zA-Z0-9_-]/g,
-        "_",
-      );
-      const dedicatedTestDir = createTestDirName(safeWorkflowName);
-      await fs.cp(
-        path.join(__dirname, "playwright_template"),
-        dedicatedTestDir,
+  benchmark_user_workflow: {
+    description: "Benchmark a recorded user workflow",
+    configFields: async ({ table }) => {
+      const { nameOpts, dataOpts } = await cfgOpts(table.id);
+      return [
         {
-          recursive: true,
+          name: "num_iterations",
+          label: "Number of Iterations",
+          type: "Integer",
+          default: 5,
+          required: true,
         },
-      );
-
-      // put the events into a json file
-      await fs.writeFile(
-        path.join(dedicatedTestDir, "events.json"),
-        JSON.stringify(
-          {
-            events: (await eventsTable.getRows({ [topFk]: row.id })).map(
-              (r) => r[dataField],
-            ),
-            workflow_name: row[workflow_name_field],
+        {
+          name: "workflow_name_field",
+          label: "Workflow Name",
+          type: "String",
+          required: true,
+          attributes: {
+            options: nameOpts,
           },
-          null,
-          2,
-        ),
-      );
-
-      // run the playwright script
-      const child = spawn(path.join(dedicatedTestDir, "run.sh"), {
-        cwd: dedicatedTestDir,
-        stdio: "inherit",
-      });
-      await new Promise((resolve, reject) => {
-        child.on("exit", async (code) => {
-          if (code === 0) {
-            if (html_report_file) {
-              const reportFile = await File.from_file_on_disk(
-                "index.html",
-                path.join(dedicatedTestDir, "my-report"),
-              );
-              const newPath = File.get_new_path(
-                path.join(
-                  html_report_file_directory || "/",
-                  `${safeWorkflowName}.html`,
-                ),
-                true,
-              );
-              const newName = path.basename(newPath);
-              await reportFile.rename(newName);
-              await reportFile.move_to_dir(html_report_file_directory || "/");
-
-              await table.updateRow(
-                { [html_report_file]: reportFile.path_to_serve },
-                row[table.pk_name],
-              );
-            }
-            resolve();
-          } else reject(new Error(`Playwright tests failed with code ${code}`));
-        });
-      });
-
+        },
+        {
+          name: "data_field",
+          label: "Event Data Field",
+          sublabel:
+            "JSON Field to store recorded events (format table_with_data.json_field->key_to_top_table)",
+          type: "String",
+          attributes: {
+            options: dataOpts,
+          },
+        },
+        {
+          name: "benchmark_data_field",
+          label: "Benchmark Data Field",
+          type: "String",
+          attributes: {
+            options: dataOpts,
+          },
+        },
+      ];
+    },
+    run: async ({ table, row, configuration }) => {
+      const helper = new RerunHelper(table, row, configuration);
+      await helper.rerun();
       return {
         success: true,
         notify_success: "The workflow completed successfully",

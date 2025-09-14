@@ -1,0 +1,53 @@
+const path = require("path");
+const fs = require("fs").promises;
+
+const readEventsJSON = async (filePath) => {
+  const data = await fs.readFile(path.join(__dirname, "events.json"), "utf-8");
+  return JSON.parse(data);
+};
+
+const writeBenchmarkJSON = async (content) => {
+  await fs.writeFile(
+    path.join(
+      __dirname,
+      "benchmark_data",
+      `benchmark_results_${new Date().valueOf()}.json`,
+    ),
+    JSON.stringify(content, null, 2),
+  );
+};
+
+const getBenchmarkMetrics = async (page) => {
+  const navTiming = await page.evaluate(() => {
+    const [entry] = performance.getEntriesByType("navigation");
+    return {
+      responseEnd: entry.responseEnd,
+      domComplete: entry.domComplete,
+    };
+  });
+
+  const lcp = await page.evaluate(async () => {
+    return new Promise((resolve) => {
+      let lcpValue = 0;
+      new PerformanceObserver((entryList, observer) => {
+        for (const entry of entryList.getEntries()) {
+          lcpValue = entry.startTime;
+        }
+        observer.disconnect();
+        resolve(lcpValue);
+      }).observe({ type: "largest-contentful-paint", buffered: true });
+    });
+  });
+  const result = {
+    responseEnd: navTiming.responseEnd,
+    domComplete: navTiming.domComplete,
+    LCP: lcp,
+  };
+  return result;
+};
+
+module.exports = {
+  readEventsJSON,
+  writeBenchmarkJSON,
+  getBenchmarkMetrics,
+};
