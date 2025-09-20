@@ -29,12 +29,11 @@ test.describe("generic Test Suite", () => {
       switch (event.type) {
         case "page_info":
           console.log(`Navigating to: ${event.url}`);
-          const oldUrl = event.url;
-          await page.goto(oldUrl.replace(/:\d+/, ":3010"));
+          await page.goto(event.url);
           if (doBenchmark) {
             const benchData = await getBenchmarkMetrics(page);
             console.log(benchData);
-            benchmarkResults.push({ url: oldUrl, ...benchData });
+            benchmarkResults.push({ url: event.url, ...benchData });
           }
           break;
         case "click":
