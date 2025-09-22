@@ -173,7 +173,7 @@ module.exports = {
         },
       ];
     },
-    run: async ({ table, row, configuration }) => {
+    run: async ({ table, row, configuration, req }) => {
       const wfRunRel = parseRelation(configuration.workflow_run_relation);
       const wfRunId = await insertWfRunRow(
         row[table.pk_name || "id"],
@@ -181,10 +181,25 @@ module.exports = {
       );
       if (typeof wfRunId === "string") throw new Error(wfRunId);
       const helper = new RerunHelper(table, row, wfRunRel, configuration);
-      const success = await helper.rerun(wfRunId);
+      helper.rerun(wfRunId).then((success) => {
+        getState().log(5, `Asynchronous workflow re-run completed: ${success}`);
+      });
       return {
-        success: success,
-        notify_success: "The workflow completed successfully",
+        poll_for: { ...req.body, workflow_run_id: wfRunId },
+        notify: "Workflow re-run started",
+      };
+    },
+    hasFinished: async ({ configuration, req }) => {
+      const wfRunId = req.body.workflow_run_id;
+      const wfRunRel = parseRelation(configuration.workflow_run_relation);
+      const wfRunTbl = Table.findOne({ name: wfRunRel.tblName });
+      const wfRunRow = await wfRunTbl.getRow({ id: wfRunId });
+      if (!wfRunRow) throw new Error("Workflow Run row not found");
+      return {
+        has_finished:
+          wfRunRow[configuration.success_flag_field] === true ||
+          wfRunRow[configuration.success_flag_field] === false,
+        msg: "Workflow re-run completed",
       };
     },
     requireRow: true,
@@ -262,7 +277,7 @@ module.exports = {
         },
       ];
     },
-    run: async ({ table, row, configuration }) => {
+    run: async ({ table, row, configuration, req }) => {
       const wfRunRel = parseRelation(configuration.workflow_run_relation);
       const wfRunId = await insertWfRunRow(
         row[table.pk_name || "id"],
@@ -270,10 +285,28 @@ module.exports = {
       );
       if (typeof wfRunId === "string") throw new Error(wfRunId);
       const helper = new RerunHelper(table, row, wfRunRel, configuration);
-      const success = await helper.rerun(wfRunId);
+      helper.rerun(wfRunId).then((success) => {
+        getState().log(
+          5,
+          `Asynchronous workflow benchmark completed: ${success}`,
+        );
+      });
       return {
-        success: success,
-        notify_success: "The workflow completed successfully",
+        poll_for: { ...req.body, workflow_run_id: wfRunId },
+        notify: "Workflow benchmark started",
+      };
+    },
+    hasFinished: async ({ configuration, req }) => {
+      const wfRunId = req.body.workflow_run_id;
+      const wfRunRel = parseRelation(configuration.workflow_run_relation);
+      const wfRunTbl = Table.findOne({ name: wfRunRel.tblName });
+      const wfRunRow = await wfRunTbl.getRow({ id: wfRunId });
+      if (!wfRunRow) throw new Error("Workflow Run row not found");
+      return {
+        has_finished:
+          wfRunRow[configuration.success_flag_field] === true ||
+          wfRunRow[configuration.success_flag_field] === false,
+        msg: "Workflow benchmark completed",
       };
     },
     requireRow: true,
