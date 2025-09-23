@@ -25,7 +25,7 @@ test.describe("generic Test Suite", () => {
   test("generic steps", async ({ browser }) => {
     const benchmarkResults = [];
     for (const event of testData.events) {
-      if (event.ignore) continue;
+      if (!event || event.ignore) continue;
       switch (event.type) {
         case "page_info":
           console.log(`Navigating to: ${event.url}`);

@@ -207,7 +207,7 @@ const virtual_triggers = (
       when_trigger: "Delete",
       table_id: table_id,
       run: async (row) => {
-        getState().log(5, `Deleting events for workflow id ${row.id}`);
+        getState().log(5, `Deleting events for workflow id ${row[table.pk_name]}`);
         const { dataTblName, topFk } = parseDataField(data_field);
         const dataTbl = Table.findOne({ name: dataTblName });
         if (!dataTbl) throw new Error(`Table ${dataTblName} not found`);
@@ -223,6 +223,10 @@ const virtual_triggers = (
         } catch (e) {
           getState().log(2, `Error deleting test directory: ${e.message}`);
         }
+
+	// TODO
+        // find re-run and benchmark actions for this table and 
+        // delete rows in workflow_run_relation for row[table.pk_name]
       },
     },
   ];
