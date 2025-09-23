@@ -1,22 +1,20 @@
 const { test, expect } = require("@playwright/test");
 
-const path = require("path");
-const fs = require("fs").promises;
+const {
+  readEventsJSON,
+  writeBenchmarkJSON,
+  getBenchmarkMetrics,
+} = require("../test-helpers");
 
-const readEventsFile = async (filePath) => {
-  const data = await fs.readFile(
-    path.join(__dirname, "..", "events.json"),
-    "utf-8",
-  );
-  return JSON.parse(data);
-};
+const doBenchmark = process.env.DO_BENCHMARK === "true";
+console.log(`Benchmarking is ${doBenchmark ? "enabled" : "disabled"}`);
 
 test.describe("generic Test Suite", () => {
   let testData = null;
   let page = null;
   let context = null;
   test.beforeAll(async ({ browser }) => {
-    testData = await readEventsFile(path.join(__dirname, "..", "events.json"));
+    testData = await readEventsJSON();
     context = await browser.newContext({
       ignoreHTTPSErrors: true,
     });
@@ -25,13 +23,18 @@ test.describe("generic Test Suite", () => {
     await page.setViewportSize({ width: width || 1280, height: height || 720 });
   });
   test("generic steps", async ({ browser }) => {
+    const benchmarkResults = [];
     for (const event of testData.events) {
-      if (event.ignore) continue;
+      if (!event || event.ignore) continue;
       switch (event.type) {
         case "page_info":
           console.log(`Navigating to: ${event.url}`);
-          const oldUrl = event.url;
-          await page.goto(oldUrl.replace(/:\d+/, ":3010"));
+          await page.goto(event.url);
+          if (doBenchmark) {
+            const benchData = await getBenchmarkMetrics(page);
+            console.log(benchData);
+            benchmarkResults.push({ url: event.url, ...benchData });
+          }
           break;
         case "click":
           console.log(`Clicking on: ${event.selector}`);
@@ -55,6 +58,10 @@ test.describe("generic Test Suite", () => {
         default:
           console.log(`Unknown event type: ${event.type}`);
       }
+    }
+
+    if (doBenchmark) {
+      await writeBenchmarkJSON(benchmarkResults);
     }
   });
 });
