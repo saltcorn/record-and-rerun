@@ -224,7 +224,24 @@ const RecordAndRerun = (() => {
       console.error("Error initializing workflow:", error);
     }
   };
-
+  const startFromPublic = async (viewname, workflow) => {
+    try {
+      // call /auth/logout
+      const response = await fetch("/auth/logout", {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json",
+          "CSRF-Token": _sc_globalCsrf,
+        },
+      });
+      if (!response.ok) throw new Error("Failed to logout");
+      // redirect to home page
+      window.location.href = window.location.origin;
+    }
+    catch (error) {
+      console.error("Error starting from public:", error);
+    }
+  };
   const getCfg = () =>
     JSON.parse(sessionStorage.getItem("web_recording_cfg") || "{}");
   const setCfg = (cfg) =>
@@ -272,6 +289,7 @@ const RecordAndRerun = (() => {
     getCfg,
     setCfg,
     initWorkflow,
+    startFromPublic,
     Recorder,
     recorder: new Recorder(getCfg()),
     showRecordingBox,

@@ -67,13 +67,12 @@ const run = async (
     script(
       domReady(`
         const indicator = document.getElementById('recording-indicator');
-        const newSessionMsg = "⚠️ Workflow initialized — log out and start a new session to begin recording.";
         const recordingMsg = "🔴 Recording...";
         const currentCfg = RecordAndRerun.getCfg();
         if (currentCfg.viewname === '${viewname}' && currentCfg.recording) {
           document.getElementById('workflow_name').value = currentCfg.workflow['${workflow_name_field}'] || '';
-          indicator.textContent = currentCfg.newSession ? recordingMsg : newSessionMsg;
-          indicator.style.color = currentCfg.newSession ? "red" : "orange";
+          indicator.textContent = currentCfg.newSession ? recordingMsg : "";
+          indicator.style.color = currentCfg.newSession ? "red" : "";
         }
         else {
           const now = new Date();
@@ -94,8 +93,7 @@ const run = async (
               workflow: newWorkflow,
               workflowName: document.getElementById('workflow_name').value
             });
-            indicator.textContent = newSessionMsg;
-            indicator.style.color = "orange";
+            await RecordAndRerun.startFromPublic();
           }
           else {
             indicator.textContent = "Error initializing workflow";
@@ -207,7 +205,10 @@ const virtual_triggers = (
       when_trigger: "Delete",
       table_id: table_id,
       run: async (row) => {
-        getState().log(5, `Deleting events for workflow id ${row[table.pk_name]}`);
+        getState().log(
+          5,
+          `Deleting events for workflow id ${row[table.pk_name]}`,
+        );
         const { dataTblName, topFk } = parseDataField(data_field);
         const dataTbl = Table.findOne({ name: dataTblName });
         if (!dataTbl) throw new Error(`Table ${dataTblName} not found`);
