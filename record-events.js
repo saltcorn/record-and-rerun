@@ -21,7 +21,7 @@ const get_state_fields = async () => [];
 const run = async (
   table_id,
   viewname,
-  { workflow_name_field },
+  { workflow_name_field, data_field, confirm_start_recording },
   state,
   extra,
 ) => {
@@ -48,7 +48,9 @@ const run = async (
       button(
         {
           class: "btn btn-primary",
-          onclick: "initRecording()",
+          onclick: confirm_start_recording
+            ? "if (confirm('Start recording? You will be logged out and redirected to home.')) { initRecording(); }"
+            : "initRecording()",
         },
         "Start Recording",
       ),
@@ -142,6 +144,14 @@ const configuration_workflow = (cfg) =>
                 attributes: {
                   options: dataOpts.map((f) => f).join(),
                 },
+              },
+              {
+                name: "confirm_start_recording",
+                label: "Confirm before starting recording",
+                sublabel:
+                  "Recording will log you out and redirect you to home. Check this to get a confirmation prompt.",
+                type: "Bool",
+                default: true,
               },
             ],
           });
