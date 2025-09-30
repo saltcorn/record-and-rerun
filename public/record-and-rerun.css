@@ -22,9 +22,6 @@
   left: 20px;
   background: #d32f2f;
   color: white;
-  display: flex;
-  align-items: center;
-  gap: 16px;
   padding: 10px 16px;
   border-radius: 10px;
   font-family: sans-serif;
@@ -36,6 +33,12 @@
 .recording-bar span {
   font-weight: bold;
 }
+.recording-controls {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
 .stop-btn {
   display: flex;
   align-items: center;
