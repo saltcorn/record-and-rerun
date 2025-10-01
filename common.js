@@ -114,9 +114,14 @@ const preparePlaywrightDir = async (testDir, workflowName, events) => {
     JSON.stringify({ events, workflow_name: workflowName }),
   );
   const benchmarkDir = path.join(testDir, "benchmark_data");
-  const files = await fs.readdir(benchmarkDir);
-  for (const file of files) {
-    await fs.unlink(path.join(benchmarkDir, file));
+  try {
+    await fs.access(benchmarkDir);
+    const files = await fs.readdir(benchmarkDir);
+    for (const file of files) {
+      await fs.unlink(path.join(benchmarkDir, file));
+    }
+  } catch (err) {
+    await fs.mkdir(benchmarkDir, { recursive: true });
   }
 };
 
