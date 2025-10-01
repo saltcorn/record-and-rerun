@@ -35,6 +35,9 @@ const RecordAndRerun = (() => {
           // ignore clicks on the custom context menu
           if (event.target.closest(".custom-menu")) return;
 
+          // ignore clicks .toast-header
+          if (event.target.closest(".toast-header")) return;
+
           // ignore 'Enter' when followed by a synthetic click
           const element = event.target;
           if (

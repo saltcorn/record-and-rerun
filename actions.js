@@ -49,9 +49,12 @@ class RerunHelper {
   }
 
   async rerun(wfRunId) {
-    const wfRunRow = {
-      [this.wfRunRel.topFk]: this.wfRow[this.wfTable.pk_name || "id"],
-    };
+    const wfRunRow = this.wfRunRel
+      ? {
+          [this.wfRunRel.topFk]: this.wfRow[this.wfTable.pk_name || "id"],
+        }
+      : null;
+    let successFlag = true;
     try {
       await preparePlaywrightDir(
         this.testDir,
@@ -64,29 +67,36 @@ class RerunHelper {
         this.isBenchmark,
       );
 
-      // prepare wfRun-update
-      wfRunRow[this.successFlagField] = true;
-      if (this.isBenchmark) {
-        const allRunStats = await readBenchmarkFiles(this.testDir);
-        const benchJson = await calcStats(allRunStats);
-        wfRunRow[this.benchDataField] = benchJson;
-      }
-      if (this.htmlReportFile && this.htmlReportDir) {
-        const pathToServe = await copyHtmlReport(
-          this.testDir,
-          this.workflowName,
-          this.htmlReportDir,
-        );
-        wfRunRow[this.htmlReportFile] = pathToServe;
+      if (wfRunRow) {
+        // prepare wfRun-update
+        if (this.successFlagField)
+          wfRunRow[this.successFlagField] = successFlag;
+        if (this.isBenchmark) {
+          const allRunStats = await readBenchmarkFiles(this.testDir);
+          const benchJson = await calcStats(allRunStats);
+          wfRunRow[this.benchDataField] = benchJson;
+        }
+        if (this.htmlReportFile && this.htmlReportDir) {
+          const pathToServe = await copyHtmlReport(
+            this.testDir,
+            this.workflowName,
+            this.htmlReportDir,
+          );
+          wfRunRow[this.htmlReportFile] = pathToServe;
+        }
       }
     } catch (err) {
       getState().log(2, `Workflow rerun error: ${err.message}`);
-      wfRunRow[this.successFlagField] = false;
+      successFlag = false;
+      if (wfRunRow && this.successFlagField)
+        wfRunRow[this.successFlagField] = successFlag;
     } finally {
-      const wfRunTbl = Table.findOne({ name: this.wfRunRel.tblName });
-      await wfRunTbl.updateRow(wfRunRow, wfRunId);
+      if (this.wfRunRel && wfRunId) {
+        const wfRunTbl = Table.findOne({ name: this.wfRunRel.tblName });
+        await wfRunTbl.updateRow(wfRunRow, wfRunId);
+      }
     }
-    return wfRunRow[this.successFlagField];
+    return successFlag;
   }
 
   async loadEvents() {
@@ -141,7 +151,6 @@ module.exports = {
           attributes: {
             options: wfRunRelOpts,
           },
-          required: true,
         },
         {
           name: "success_flag_field",
@@ -151,7 +160,6 @@ module.exports = {
           attributes: {
             calcOptions: ["workflow_run_relation", successFlagOpts],
           },
-          required: true,
         },
         {
           name: "html_report_file",
@@ -174,12 +182,13 @@ module.exports = {
       ];
     },
     run: async ({ table, row, configuration, req }) => {
-      const wfRunRel = parseRelation(configuration.workflow_run_relation);
-      const wfRunId = await insertWfRunRow(
-        row[table.pk_name || "id"],
-        wfRunRel,
-      );
-      if (typeof wfRunId === "string") throw new Error(wfRunId);
+      let wfRunId = null;
+      let wfRunRel = null;
+      if (configuration.workflow_run_relation) {
+        wfRunRel = parseRelation(configuration.workflow_run_relation);
+        wfRunId = await insertWfRunRow(row[table.pk_name || "id"], wfRunRel);
+        if (typeof wfRunId === "string") throw new Error(wfRunId);
+      }
       const helper = new RerunHelper(table, row, wfRunRel, configuration);
       const success = await helper.rerun(wfRunId);
       const msg = `Workflow re-run completed: ${success ? "success" : "failed"}`;
@@ -189,7 +198,6 @@ module.exports = {
       };
     },
     requireRow: true,
-    supportsAsync: true,
   },
 
   benchmark_user_workflow: {
@@ -260,7 +268,6 @@ module.exports = {
           attributes: {
             calcOptions: ["workflow_run_relation", successFlagOpts],
           },
-          required: true,
         },
       ];
     },
@@ -280,6 +287,5 @@ module.exports = {
       };
     },
     requireRow: true,
-    supportsAsync: true,
   },
 };

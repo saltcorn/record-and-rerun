@@ -39,9 +39,12 @@ const cfgOpts = async (tableId) => {
     const wfRunRelation = `${refTable.name}.${ref.name}`;
     wfRunRelOpts.push(wfRunRelation);
     benchDataOpts[wfRunRelation] = jsonFields.map((f) => f.name);
-    successFlagOpts[wfRunRelation] = refTable.fields
-      .filter((f) => f.type?.name === "Bool")
-      .map((f) => f.name);
+    successFlagOpts[wfRunRelation] = [
+      "",
+      ...refTable.fields
+        .filter((f) => f.type?.name === "Bool")
+        .map((f) => f.name),
+    ];
     fileOpts[wfRunRelation] = refTable.fields
       .filter((f) => f.type === "File")
       .map((f) => f.name);
@@ -84,6 +87,8 @@ const parseDataField = (field) => {
  */
 const parseRelation = (relation) => {
   const tokens = relation.split(".");
+  if (tokens.length !== 2)
+    throw new Error("relation must be of the form table.fk_to_top");
   return { tblName: tokens[0], topFk: tokens[1] };
 };
 
