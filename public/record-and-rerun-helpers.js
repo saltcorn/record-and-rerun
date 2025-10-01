@@ -286,7 +286,7 @@ const RecordAndRerun = (() => {
     document.body.appendChild(box);
   };
 
-  const hideRecordingBox = () => {
+  const removeRecordingBox = () => {
     const box = document.querySelector(".recording-bar");
     if (box) box.remove();
   };
@@ -299,6 +299,6 @@ const RecordAndRerun = (() => {
     Recorder,
     recorder: new Recorder(getCfg()),
     showRecordingBox,
-    hideRecordingBox,
+    removeRecordingBox,
   };
 })();

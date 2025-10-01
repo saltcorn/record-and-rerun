@@ -21,7 +21,7 @@ const get_state_fields = async () => [];
 const run = async (
   table_id,
   viewname,
-  { workflow_name_field, data_field, confirm_start_recording },
+  { workflow_name_field, confirm_start_recording },
   state,
   extra,
 ) => {

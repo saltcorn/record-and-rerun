@@ -230,14 +230,25 @@ module.exports = {
   if (recording) {
     const asyncFn = async () => {
       await RecordAndRerun.recorder.startRecording();
-      RecordAndRerun.showRecordingBox(workflowName, () => {
-        if (window._sc_loglevel > 4) console.log("Stop recording calback");
-        RecordAndRerun.recorder.stopRecording();
-        const oldCfg = RecordAndRerun.getCfg();
-        RecordAndRerun.setCfg({ ...oldCfg, recording: false});
-        RecordAndRerun.hideRecordingBox();
-        const indicator = document.getElementById('recording-indicator');
-        if (indicator) indicator.textContent = "";
+      RecordAndRerun.showRecordingBox(workflowName, async () => {
+        try {
+          if (window._sc_loglevel > 4) console.log("Stop recording calback");
+          await RecordAndRerun.recorder.stopRecording();
+          const oldCfg = RecordAndRerun.getCfg();
+          RecordAndRerun.setCfg({ ...oldCfg, recording: false});
+          RecordAndRerun.removeRecordingBox();
+          const indicator = document.getElementById('recording-indicator');
+          if (indicator) indicator.textContent = "";
+        } catch (err) {
+          console.error("Error stopping recording:", err);
+          notifyAlert({
+            type: "danger",
+            text: err.message || "Error stopping recording",
+          });
+          const oldCfg = RecordAndRerun.getCfg();
+          RecordAndRerun.setCfg({ ...oldCfg, recording: false});
+          RecordAndRerun.removeRecordingBox();
+        }
       });
     };
     asyncFn().catch((err) => {
@@ -246,6 +257,11 @@ module.exports = {
         type: "danger",
         text: err.message || "Error starting recording",
       });
+      const oldCfg = RecordAndRerun.getCfg();
+      RecordAndRerun.setCfg({ ...oldCfg, recording: false});
+      RecordAndRerun.removeRecordingBox();
+      const indicator = document.getElementById('recording-indicator');
+      if (indicator) indicator.textContent = "";
     });
   }`),
       ),

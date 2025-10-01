@@ -73,7 +73,7 @@ class RerunHelper {
           wfRunRow[this.successFlagField] = successFlag;
         if (this.isBenchmark) {
           const allRunStats = await readBenchmarkFiles(this.testDir);
-          const benchJson = await calcStats(allRunStats);
+          const benchJson = calcStats(allRunStats);
           wfRunRow[this.benchDataField] = benchJson;
         }
         if (this.htmlReportFile && this.htmlReportDir) {

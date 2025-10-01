@@ -224,7 +224,7 @@ const calcStandardDeviation = (arr) => {
  * @param {object[][]} allRunStats array of arrays of stats objects
  * @return {object[]} array of stats objects with mean and standard deviation
  */
-const calcStats = async (allRunStats) => {
+const calcStats = (allRunStats) => {
   const result = [];
   const allMetrics = ["responseEnd", "domComplete", "LCP"];
   let statsLength = allRunStats[0].length;
