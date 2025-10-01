@@ -5,29 +5,19 @@ const RecordAndRerun = (() => {
       this.viewname = cfg.viewname;
       this.workflow = cfg.workflow;
       this.recording = cfg.recording || false;
-      this.newSession = cfg.newSession || false;
       this.currentUrl = new URL(window.location.href);
-      if (this.currentUrl.pathname === "/auth/login") {
-        this.newSession = true;
-        const oldCfg = getCfg();
-        setCfg({ ...oldCfg, newSession: true });
-      }
-      if (this.recording && this.newSession) this.startRecording();
       this.initListeners();
     }
 
     checkUpload() {
-      if (this.events.length >= 5 && this.currentUrl.pathname !== "/auth/login")
-        this.uploadEvents();
-    }
-
-    recordingActive() {
-      return this.recording && this.newSession;
+      return (
+        this.events.length >= 5 && this.currentUrl.pathname !== "/auth/login"
+      );
     }
 
     initListeners() {
       document.addEventListener("keydown", (e) => {
-        if (this.recording && this.newSession) {
+        if (this.recording) {
           this.events.push({
             type: "keydown",
             key: e.key,
@@ -38,12 +28,15 @@ const RecordAndRerun = (() => {
         }
       });
 
-      document.addEventListener("click", (event) => {
+      document.addEventListener("click", async (event) => {
         const assertMenu = document.querySelector(".custom-menu");
         if (assertMenu) assertMenu.remove();
-        if (this.recording && this.newSession) {
+        if (this.recording) {
           // ignore clicks on the custom context menu
           if (event.target.closest(".custom-menu")) return;
+
+          // ignore clicks .toast-header
+          if (event.target.closest(".toast-header")) return;
 
           // ignore 'Enter' when followed by a synthetic click
           const element = event.target;
@@ -69,12 +62,12 @@ const RecordAndRerun = (() => {
           };
           this.events.push(eventData);
           persistEvents(this.events);
-          if (this.checkUpload()) this.uploadEvents();
+          if (this.checkUpload()) await this.uploadEvents();
         }
       });
 
       document.addEventListener("contextmenu", (event) => {
-        if (this.recording && this.newSession) {
+        if (this.recording) {
           const selected = window.getSelection();
           const text = selected.toString().trim();
           if (text.length > 0) {
@@ -85,7 +78,7 @@ const RecordAndRerun = (() => {
             menu.style.left = event.pageX + "px";
             const item = document.createElement("div");
             item.textContent = "Assert Text is present";
-            item.onclick = () => {
+            item.onclick = async () => {
               console.log("Assert Text is present clicked");
               this.events.push({
                 type: "assert_text",
@@ -93,7 +86,7 @@ const RecordAndRerun = (() => {
                 timestamp: new Date().toISOString(),
               });
               persistEvents(this.events);
-              if (this.checkUpload()) this.uploadEvents();
+              if (this.checkUpload()) await this.uploadEvents();
               selected.removeAllRanges();
             };
             menu.appendChild(item);
@@ -103,7 +96,7 @@ const RecordAndRerun = (() => {
       });
     }
 
-    startRecording() {
+    async startRecording() {
       this.recording = true;
       this.events.push({
         type: "page_info",
@@ -113,14 +106,14 @@ const RecordAndRerun = (() => {
         timestamp: new Date().toISOString(),
       });
       persistEvents(this.events);
-      if (this.checkUpload()) this.uploadEvents();
+      if (this.checkUpload()) await this.uploadEvents();
     }
 
-    stopRecording() {
+    async stopRecording() {
       const persisted = getPersistedEvents();
       if (persisted?.length > 0) {
         this.events = persisted;
-        this.uploadEvents();
+        await this.uploadEvents();
       }
       this.recording = false;
     }
@@ -148,11 +141,17 @@ const RecordAndRerun = (() => {
           }),
         });
         if (response.ok) {
+          const result = await response.json();
+          if (result.error) throw new Error(result.error);
           console.log("Events uploaded successfully.");
           this.events = [];
         } else throw new Error("Failed to upload events");
       } catch (error) {
         console.error("Error uploading events:", error);
+        notifyAlert({
+          type: "danger",
+          text: error.message || "Error uploading events",
+        });
         this.events = eventsToUpload.concat(this.events);
       }
     }
@@ -222,6 +221,10 @@ const RecordAndRerun = (() => {
       return result.created;
     } catch (error) {
       console.error("Error initializing workflow:", error);
+      notifyAlert({
+        type: "danger",
+        text: error.message || "Error initializing workflow",
+      });
     }
   };
   const startFromPublic = async (viewname, workflow) => {
@@ -237,9 +240,14 @@ const RecordAndRerun = (() => {
       if (!response.ok) throw new Error("Failed to logout");
       // redirect to home page
       window.location.href = window.location.origin;
-    }
-    catch (error) {
+      return true;
+    } catch (error) {
       console.error("Error starting from public:", error);
+      notifyAlert({
+        type: "danger",
+        text: error.message || "Error starting from public",
+      });
+      return false;
     }
   };
   const getCfg = () =>
@@ -260,27 +268,25 @@ const RecordAndRerun = (() => {
 
   const showRecordingBox = (workflowName, stopCallback) => {
     const box = document.createElement("div");
-    box.className = "recording-bar";
-
-    const nameEl = document.createElement("span");
-    nameEl.textContent = `Recording: ${workflowName}`;
-
-    const stopBtn = document.createElement("button");
-    stopBtn.className = "stop-btn";
-    stopBtn.innerHTML = `
-      <svg viewBox="0 0 24 24">
-        <rect x="6" y="6" width="12" height="12"></rect>
-      </svg>
-      Stop
-    `;
+    const boxHtml = `
+  <div class="recording-bar">
+    <div class="recording-controls">
+      <span>Recording: ${workflowName}</span>
+      <button class="stop-btn" id="stop-recording-id">
+        <svg viewBox="0 0 24 24">
+          <rect x="6" y="6" width="12" height="12"></rect>
+        </svg>
+        Stop
+      </button>
+    </div>
+  </div>`;
+    box.innerHTML = boxHtml;
+    const stopBtn = box.querySelector("#stop-recording-id");
     stopBtn.onclick = stopCallback;
-
-    box.appendChild(nameEl);
-    box.appendChild(stopBtn);
     document.body.appendChild(box);
   };
 
-  const hideRecordingBox = () => {
+  const removeRecordingBox = () => {
     const box = document.querySelector(".recording-bar");
     if (box) box.remove();
   };
@@ -293,6 +299,6 @@ const RecordAndRerun = (() => {
     Recorder,
     recorder: new Recorder(getCfg()),
     showRecordingBox,
-    hideRecordingBox,
+    removeRecordingBox,
   };
 })();

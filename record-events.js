@@ -21,7 +21,7 @@ const get_state_fields = async () => [];
 const run = async (
   table_id,
   viewname,
-  { workflow_name_field },
+  { workflow_name_field, confirm_start_recording },
   state,
   extra,
 ) => {
@@ -48,7 +48,9 @@ const run = async (
       button(
         {
           class: "btn btn-primary",
-          onclick: "initRecording()",
+          onclick: confirm_start_recording
+            ? "if (confirm('Start recording? You will be logged out and redirected to home.')) { initRecording(); }"
+            : "initRecording()",
         },
         "Start Recording",
       ),
@@ -71,8 +73,8 @@ const run = async (
         const currentCfg = RecordAndRerun.getCfg();
         if (currentCfg.viewname === '${viewname}' && currentCfg.recording) {
           document.getElementById('workflow_name').value = currentCfg.workflow['${workflow_name_field}'] || '';
-          indicator.textContent = currentCfg.newSession ? recordingMsg : "";
-          indicator.style.color = currentCfg.newSession ? "red" : "";
+          indicator.textContent = currentCfg.recording ? recordingMsg : "";
+          indicator.style.color = currentCfg.recording ? "red" : "";
         }
         else {
           const now = new Date();
@@ -86,14 +88,17 @@ const run = async (
             document.getElementById('workflow_name').value
           );
           if (newWorkflow) {
-            RecordAndRerun.setCfg({
+            const newCfg = {
               viewname: '${viewname}',
               recording: true,
-              newSession: false,
               workflow: newWorkflow,
               workflowName: document.getElementById('workflow_name').value
-            });
-            await RecordAndRerun.startFromPublic();
+            };
+            RecordAndRerun.setCfg(newCfg);
+            if (!await RecordAndRerun.startFromPublic()) {
+              newCfg.recording = false;
+              RecordAndRerun.setCfg(newCfg);
+            }
           }
           else {
             indicator.textContent = "Error initializing workflow";
@@ -139,6 +144,14 @@ const configuration_workflow = (cfg) =>
                 attributes: {
                   options: dataOpts.map((f) => f).join(),
                 },
+              },
+              {
+                name: "confirm_start_recording",
+                label: "Confirm before starting recording",
+                sublabel:
+                  "Recording will log you out and redirect you to home. Check this to get a confirmation prompt.",
+                type: "Bool",
+                default: true,
               },
             ],
           });
@@ -225,8 +238,8 @@ const virtual_triggers = (
           getState().log(2, `Error deleting test directory: ${e.message}`);
         }
 
-	// TODO
-        // find re-run and benchmark actions for this table and 
+        // TODO
+        // find re-run and benchmark actions for this table and
         // delete rows in workflow_run_relation for row[table.pk_name]
       },
     },

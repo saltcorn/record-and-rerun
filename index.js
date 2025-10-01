@@ -226,18 +226,44 @@ module.exports = {
     {
       headerTag: script(
         domReady(`
-  const { recording, newSession, workflowName } = RecordAndRerun.getCfg();
-  if (recording && newSession) {
-    RecordAndRerun.showRecordingBox(workflowName, () => {
-      RecordAndRerun.recorder.stopRecording();
+  const { recording, workflowName } = RecordAndRerun.getCfg();
+  if (recording) {
+    const asyncFn = async () => {
+      await RecordAndRerun.recorder.startRecording();
+      RecordAndRerun.showRecordingBox(workflowName, async () => {
+        try {
+          if (window._sc_loglevel > 4) console.log("Stop recording calback");
+          await RecordAndRerun.recorder.stopRecording();
+          const oldCfg = RecordAndRerun.getCfg();
+          RecordAndRerun.setCfg({ ...oldCfg, recording: false});
+          RecordAndRerun.removeRecordingBox();
+          const indicator = document.getElementById('recording-indicator');
+          if (indicator) indicator.textContent = "";
+        } catch (err) {
+          console.error("Error stopping recording:", err);
+          notifyAlert({
+            type: "danger",
+            text: err.message || "Error stopping recording",
+          });
+          const oldCfg = RecordAndRerun.getCfg();
+          RecordAndRerun.setCfg({ ...oldCfg, recording: false});
+          RecordAndRerun.removeRecordingBox();
+        }
+      });
+    };
+    asyncFn().catch((err) => {
+      console.error("Error starting recording:", err);
+      notifyAlert({
+        type: "danger",
+        text: err.message || "Error starting recording",
+      });
       const oldCfg = RecordAndRerun.getCfg();
-      RecordAndRerun.setCfg({ ...oldCfg, recording: false, newSession: false });
-      RecordAndRerun.hideRecordingBox();
+      RecordAndRerun.setCfg({ ...oldCfg, recording: false});
+      RecordAndRerun.removeRecordingBox();
       const indicator = document.getElementById('recording-indicator');
       if (indicator) indicator.textContent = "";
     });
-  }
-  `),
+  }`),
       ),
     },
   ],
