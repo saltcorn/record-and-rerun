@@ -1,6 +1,7 @@
 const { cfgOpts, parseRelation, insertWfRunRow } = require("./common");
 const { RerunHelper } = require("./rerun-helper");
 const Table = require("@saltcorn/data/models/table");
+const Trigger = require("@saltcorn/data/models/trigger");
 const FieldRepeat = require("@saltcorn/data/models/fieldrepeat");
 const { getState } = require("@saltcorn/data/db/state");
 
@@ -138,10 +139,16 @@ module.exports = {
         }),
       ];
     },
-    run: async ({ configuration }) => {
-      const { workflow_table, workflow_name_field, workflows_ids } =
-        configuration;
-      const wfTbl = Table.findOne({ name: workflow_table });
+    run: async ({ configuration, trigger_id }) => {
+      getState().log(
+        5,
+        `Starting rerun of multiple workflows with trigger_id: '${trigger_id}'`,
+      );
+      const trigger = Trigger.findOne(trigger_id);
+      const wfTbl = Table.findOne(trigger?.table_id);
+      if (!wfTbl)
+        return { error: `Table with id ${trigger?.table_id} not found` };
+      const { workflow_name_field, workflows_ids } = configuration;
       // optional workflow_run_relation to store run results
       const wfRunRel = configuration.workflow_run_relation
         ? parseRelation(configuration.workflow_run_relation)
