@@ -4,79 +4,81 @@ const Table = require("@saltcorn/data/models/table");
 const FieldRepeat = require("@saltcorn/data/models/fieldrepeat");
 const { getState } = require("@saltcorn/data/db/state");
 
+const rerunCfgFields = async (table) => {
+  const {
+    nameOpts,
+    dataOpts,
+    fileOpts,
+    directoryOpts,
+    wfRunRelOpts,
+    successFlagOpts,
+  } = await cfgOpts(table.id);
+  return [
+    {
+      name: "workflow_name_field",
+      label: "Workflow Name",
+      type: "String",
+      required: true,
+      attributes: {
+        options: nameOpts.map((f) => f.name).join(),
+      },
+      required: true,
+    },
+    {
+      name: "data_field",
+      label: "Event Data Field",
+      sublabel:
+        "JSON Field to store recorded events (format table_with_data.json_field->key_to_top_table)",
+      type: "String",
+      attributes: {
+        options: dataOpts.map((f) => f).join(),
+      },
+      required: true,
+    },
+    {
+      name: "workflow_run_relation",
+      label: "Workflow Run Relation",
+      type: "String",
+      sublabel:
+        "This is an optional relation pointing to a child table that stores re-run results (format: results_table.key_to_top_table)",
+      attributes: {
+        options: wfRunRelOpts,
+      },
+    },
+    {
+      name: "success_flag_field",
+      label: "Success Flag Field",
+      type: "String",
+      sublabel: "Boolean field to indicate if a re-run run was successful",
+      attributes: {
+        calcOptions: ["workflow_run_relation", successFlagOpts],
+      },
+    },
+    {
+      name: "html_report_file",
+      label: "HTML Report File Field",
+      type: "String",
+      sublabel: "File field to store HTML report (optional)",
+      attributes: {
+        calcOptions: ["workflow_run_relation", fileOpts],
+      },
+    },
+    {
+      name: "html_report_directory",
+      label: "HTML Report Directory",
+      type: "String",
+      sublabel: "Directory to store HTML reports",
+      attributes: {
+        options: directoryOpts,
+      },
+    },
+  ];
+};
+
 module.exports = {
   rerun_user_workflow: {
     description: "Rerun a recorded user workflow",
-    configFields: async ({ table }) => {
-      const {
-        nameOpts,
-        dataOpts,
-        fileOpts,
-        directoryOpts,
-        wfRunRelOpts,
-        successFlagOpts,
-      } = await cfgOpts(table.id);
-      return [
-        {
-          name: "workflow_name_field",
-          label: "Workflow Name",
-          type: "String",
-          required: true,
-          attributes: {
-            options: nameOpts.map((f) => f.name).join(),
-          },
-          required: true,
-        },
-        {
-          name: "data_field",
-          label: "Event Data Field",
-          sublabel:
-            "JSON Field to store recorded events (format table_with_data.json_field->key_to_top_table)",
-          type: "String",
-          attributes: {
-            options: dataOpts.map((f) => f).join(),
-          },
-          required: true,
-        },
-        {
-          name: "workflow_run_relation",
-          label: "Workflow Run Relation",
-          type: "String",
-          sublabel:
-            "This is an optional relation pointing to a child table that stores re-run results (format: results_table.key_to_top_table)",
-          attributes: {
-            options: wfRunRelOpts,
-          },
-        },
-        {
-          name: "success_flag_field",
-          label: "Success Flag Field",
-          type: "String",
-          sublabel: "Boolean field to indicate if a re-run run was successful",
-          attributes: {
-            calcOptions: ["workflow_run_relation", successFlagOpts],
-          },
-        },
-        {
-          name: "html_report_file",
-          label: "HTML Report File Field",
-          type: "String",
-          sublabel: "File field to store HTML report (optional)",
-          attributes: {
-            calcOptions: ["workflow_run_relation", fileOpts],
-          },
-        },
-        {
-          name: "html_report_directory",
-          label: "HTML Report Directory",
-          type: "String",
-          sublabel: "Directory to store HTML reports",
-          attributes: {
-            options: directoryOpts,
-          },
-        },
-      ];
-    },
+    configFields: async ({ table }) => await rerunCfgFields(table),
     run: async ({ table, row, configuration, req }) => {
       let wfRunId = null;
       let wfRunRel = null;
@@ -102,57 +104,18 @@ module.exports = {
     configFields: async ({ table, old_config }) => {
       if (!table)
         throw new Error("Please select a table to configure this action");
-      const { nameOpts, dataOpts, wfRunRelOpts, successFlagOpts } =
-        await cfgOpts(table.id);
       const allWorkflows = await table.getRows();
       let workflowNameField = old_config?.workflow_name_field;
       if (!workflowNameField) {
-        const firstStringField = table.fields.find((f) => f.type === "String");
+        const firstStringField = table.fields.find(
+          (f) => f.type.name === "String",
+        );
         workflowNameField = firstStringField
           ? firstStringField.name
           : table.pk_name;
       }
       return [
-        {
-          name: "workflow_name_field",
-          label: "Workflow Name",
-          type: "String",
-          required: true,
-          attributes: {
-            options: nameOpts.map((f) => f.name).join(),
-          },
-          required: true,
-        },
-        {
-          name: "data_field",
-          label: "Event Data Field",
-          sublabel:
-            "JSON Field to store recorded events (format table_with_data.json_field->key_to_top_table)",
-          type: "String",
-          attributes: {
-            options: dataOpts.map((f) => f).join(),
-          },
-          required: true,
-        },
-        {
-          name: "workflow_run_relation",
-          label: "Workflow Run Relation",
-          type: "String",
-          sublabel:
-            "This is an optional relation pointing to a child table that stores re-run results (format: results_table.key_to_top_table)",
-          attributes: {
-            options: wfRunRelOpts,
-          },
-        },
-        {
-          name: "success_flag_field",
-          label: "Success Flag Field",
-          type: "String",
-          sublabel: "Boolean field to indicate if a re-run run was successful",
-          attributes: {
-            calcOptions: ["workflow_run_relation", successFlagOpts],
-          },
-        },
+        ...(await rerunCfgFields(table)),
         new FieldRepeat({
           name: "workflows_ids",
           label: "Workflows to run",
