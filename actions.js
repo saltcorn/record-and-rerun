@@ -219,6 +219,7 @@ module.exports = {
         };
     },
     requireRow: false,
+    disableInBuilder: true,
   },
   benchmark_user_workflow: {
     description: "Benchmark a recorded user workflow",
