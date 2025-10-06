@@ -2,7 +2,11 @@ const Workflow = require("@saltcorn/data/models/workflow");
 const Form = require("@saltcorn/data/models/form");
 const Plugin = require("@saltcorn/data/models/plugin");
 const { script, domReady, code } = require("@saltcorn/markup/tags");
-const { rerun_user_workflow, benchmark_user_workflow } = require("./actions");
+const {
+  rerun_user_workflow,
+  benchmark_user_workflow,
+  rerun_multiple_workflows,
+} = require("./actions");
 const { getState } = require("@saltcorn/data/db/state");
 const db = require("@saltcorn/data/db");
 
@@ -210,7 +214,11 @@ module.exports = {
   viewtemplates: () => [require("./record-events")],
   dependencies: ["@saltcorn/json"],
   actions: () => {
-    return { rerun_user_workflow, benchmark_user_workflow };
+    return {
+      rerun_user_workflow,
+      benchmark_user_workflow,
+      rerun_multiple_workflows,
+    };
   },
   headers: () => [
     {

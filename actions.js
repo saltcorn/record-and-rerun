@@ -1,186 +1,85 @@
-const {
-  cfgOpts,
-  parseDataField,
-  parseRelation,
-  createTestDirName,
-  preparePlaywrightDir,
-  runPlaywrightScript,
-  copyHtmlReport,
-  readBenchmarkFiles,
-  calcStats,
-  insertWfRunRow,
-} = require("./common");
+const { cfgOpts, parseRelation, insertWfRunRow } = require("./common");
+const { RerunHelper } = require("./rerun-helper");
 const Table = require("@saltcorn/data/models/table");
+const Trigger = require("@saltcorn/data/models/trigger");
+const FieldRepeat = require("@saltcorn/data/models/fieldrepeat");
 const { getState } = require("@saltcorn/data/db/state");
 
-/**
- * Helper class to rerun a recorded user workflow
- */
-class RerunHelper {
-  constructor(
-    wfTable,
-    wfRow,
-    wfRunRel,
+const rerunCfgFields = async (table) => {
+  const {
+    nameOpts,
+    dataOpts,
+    fileOpts,
+    directoryOpts,
+    wfRunRelOpts,
+    successFlagOpts,
+  } = await cfgOpts(table.id);
+  return [
     {
-      num_iterations,
-      workflow_name_field,
-      data_field,
-      success_flag_field,
-      benchmark_data_field,
-      html_report_file,
-      html_report_directory,
+      name: "workflow_name_field",
+      label: "Workflow Name",
+      type: "String",
+      required: true,
+      attributes: {
+        options: nameOpts.map((f) => f.name).join(),
+      },
+      required: true,
     },
-  ) {
-    this.wfTable = wfTable;
-    this.wfRow = wfRow;
-    this.wfRunRel = wfRunRel;
-    this.dataRel = parseDataField(data_field);
-    this.isBenchmark = !!benchmark_data_field;
-    this.numIterations = num_iterations || 1;
-    this.workflowName = wfRow[workflow_name_field].replace(
-      /[^a-zA-Z0-9_-]/g,
-      "_",
-    );
-    this.testDir = createTestDirName(this.workflowName);
-    if (this.isBenchmark) this.benchDataField = benchmark_data_field;
-    this.htmlReportFile = html_report_file;
-    this.successFlagField = success_flag_field;
-    this.htmlReportDir = html_report_directory;
-  }
-
-  async rerun(wfRunId) {
-    const wfRunRow = this.wfRunRel
-      ? {
-          [this.wfRunRel.topFk]: this.wfRow[this.wfTable.pk_name || "id"],
-        }
-      : null;
-    let successFlag = true;
-    try {
-      await preparePlaywrightDir(
-        this.testDir,
-        this.workflowName,
-        await this.loadEvents(),
-      );
-      await runPlaywrightScript(
-        this.testDir,
-        this.numIterations,
-        this.isBenchmark,
-      );
-
-      if (wfRunRow) {
-        // prepare wfRun-update
-        if (this.successFlagField)
-          wfRunRow[this.successFlagField] = successFlag;
-        if (this.isBenchmark) {
-          const allRunStats = await readBenchmarkFiles(this.testDir);
-          const benchJson = calcStats(allRunStats);
-          wfRunRow[this.benchDataField] = benchJson;
-        }
-        if (this.htmlReportFile && this.htmlReportDir) {
-          const pathToServe = await copyHtmlReport(
-            this.testDir,
-            this.workflowName,
-            this.htmlReportDir,
-          );
-          wfRunRow[this.htmlReportFile] = pathToServe;
-        }
-      }
-    } catch (err) {
-      getState().log(2, `Workflow rerun error: ${err.message}`);
-      successFlag = false;
-      if (wfRunRow && this.successFlagField)
-        wfRunRow[this.successFlagField] = successFlag;
-    } finally {
-      if (this.wfRunRel && wfRunId) {
-        const wfRunTbl = Table.findOne({ name: this.wfRunRel.tblName });
-        await wfRunTbl.updateRow(wfRunRow, wfRunId);
-      }
-    }
-    return successFlag;
-  }
-
-  async loadEvents() {
-    const { dataTblName, topFk, dataField } = this.dataRel;
-    const dataTbl = Table.findOne({ name: dataTblName });
-    if (!dataTbl) throw new Error("Data table not found");
-    const rows = await dataTbl.getRows({ [topFk]: this.wfRow.id });
-    return rows.map((r) => r[dataField]);
-  }
-}
+    {
+      name: "data_field",
+      label: "Event Data Field",
+      sublabel:
+        "JSON Field to store recorded events (format table_with_data.json_field->key_to_top_table)",
+      type: "String",
+      attributes: {
+        options: dataOpts.map((f) => f).join(),
+      },
+      required: true,
+    },
+    {
+      name: "workflow_run_relation",
+      label: "Workflow Run Relation",
+      type: "String",
+      sublabel:
+        "This is an optional relation pointing to a child table that stores re-run results (format: results_table.key_to_top_table)",
+      attributes: {
+        options: wfRunRelOpts,
+      },
+    },
+    {
+      name: "success_flag_field",
+      label: "Success Flag Field",
+      type: "String",
+      sublabel: "Boolean field to indicate if a re-run run was successful",
+      attributes: {
+        calcOptions: ["workflow_run_relation", successFlagOpts],
+      },
+    },
+    {
+      name: "html_report_file",
+      label: "HTML Report File Field",
+      type: "String",
+      sublabel: "File field to store HTML report (optional)",
+      attributes: {
+        calcOptions: ["workflow_run_relation", fileOpts],
+      },
+    },
+    {
+      name: "html_report_directory",
+      label: "HTML Report Directory",
+      type: "String",
+      sublabel: "Directory to store HTML reports",
+      attributes: {
+        options: directoryOpts,
+      },
+    },
+  ];
+};
 
 module.exports = {
   rerun_user_workflow: {
     description: "Rerun a recorded user workflow",
-    configFields: async ({ table }) => {
-      const {
-        nameOpts,
-        dataOpts,
-        fileOpts,
-        directoryOpts,
-        wfRunRelOpts,
-        successFlagOpts,
-      } = await cfgOpts(table.id);
-      return [
-        {
-          name: "workflow_name_field",
-          label: "Workflow Name",
-          type: "String",
-          required: true,
-          attributes: {
-            options: nameOpts.map((f) => f.name).join(),
-          },
-          required: true,
-        },
-        {
-          name: "data_field",
-          label: "Event Data Field",
-          sublabel:
-            "JSON Field to store recorded events (format table_with_data.json_field->key_to_top_table)",
-          type: "String",
-          attributes: {
-            options: dataOpts.map((f) => f).join(),
-          },
-          required: true,
-        },
-        {
-          name: "workflow_run_relation",
-          label: "Workflow Run Relation",
-          type: "String",
-          sublabel:
-            "This relation points to a child-table to store re-run results (format: results_table.key_to_top_table)",
-          attributes: {
-            options: wfRunRelOpts,
-          },
-        },
-        {
-          name: "success_flag_field",
-          label: "Success Flag Field",
-          type: "String",
-          sublabel: "Boolean field to indicate if a re-run run was successful",
-          attributes: {
-            calcOptions: ["workflow_run_relation", successFlagOpts],
-          },
-        },
-        {
-          name: "html_report_file",
-          label: "HTML Report File Field",
-          type: "String",
-          sublabel: "File field to store HTML report (optional)",
-          attributes: {
-            calcOptions: ["workflow_run_relation", fileOpts],
-          },
-        },
-        {
-          name: "html_report_directory",
-          label: "HTML Report Directory",
-          type: "String",
-          sublabel: "Directory to store HTML reports",
-          attributes: {
-            options: directoryOpts,
-          },
-        },
-      ];
-    },
+    configFields: async ({ table }) => await rerunCfgFields(table),
     run: async ({ table, row, configuration, req }) => {
       let wfRunId = null;
       let wfRunRel = null;
@@ -191,7 +90,9 @@ module.exports = {
       }
       const helper = new RerunHelper(table, row, wfRunRel, configuration);
       const success = await helper.rerun(wfRunId);
-      const msg = `Workflow re-run completed: ${success ? "success" : "failed"}`;
+      const msg = `Workflow re-run completed: ${
+        success ? "success" : "failed"
+      }`;
       getState().log(5, msg);
       return {
         notify: msg,
@@ -199,7 +100,97 @@ module.exports = {
     },
     requireRow: true,
   },
+  rerun_multiple_workflows: {
+    description: "Rerun multiple recorded user workflows",
+    configFields: async ({ table, old_config }) => {
+      if (!table)
+        throw new Error("Please select a table to configure this action");
+      const allWorkflows = await table.getRows();
+      let workflowNameField = old_config?.workflow_name_field;
+      if (!workflowNameField) {
+        const firstStringField = table.fields.find(
+          (f) => f.type.name === "String",
+        );
+        workflowNameField = firstStringField
+          ? firstStringField.name
+          : table.pk_name;
+      }
+      return [
+        ...(await rerunCfgFields(table)),
+        new FieldRepeat({
+          name: "workflows_ids",
+          label: "Workflows to run",
+          fields: [
+            {
+              name: "workflow_id",
+              label: "Workflow Name",
+              type: "String",
+              required: true,
+              attributes: {
+                options: allWorkflows.map((wf) => {
+                  return {
+                    label: wf[workflowNameField],
+                    name: wf[table.pk_name || "id"],
+                  };
+                }),
+              },
+            },
+          ],
+        }),
+      ];
+    },
+    run: async ({ configuration, trigger_id }) => {
+      getState().log(
+        5,
+        `Starting rerun of multiple workflows with trigger_id: '${trigger_id}'`,
+      );
+      const trigger = Trigger.findOne(trigger_id);
+      const wfTbl = Table.findOne(trigger?.table_id);
+      if (!wfTbl)
+        return { error: `Table with id ${trigger?.table_id} not found` };
+      const { workflow_name_field, workflows_ids } = configuration;
+      // optional workflow_run_relation to store run results
+      const wfRunRel = configuration.workflow_run_relation
+        ? parseRelation(configuration.workflow_run_relation)
+        : null;
+      const workflows = await wfTbl.getRows({
+        id: {
+          in: workflows_ids.map((wf) => wf["workflow_id"]),
+        },
+      });
+      const failedWorkflows = [];
+      for (const row of workflows) {
+        const wfName = row[workflow_name_field];
+        getState().log(5, `Rerunning workflow ${wfName}`);
+        const runHelper = new RerunHelper(wfTbl, row, wfRunRel, configuration);
+        const wfRunId = wfRunRel
+          ? await insertWfRunRow(row[wfTbl.pk_name || "id"], wfRunRel)
+          : null;
+        if (typeof wfRunId === "string") {
+          failedWorkflows.push(wfName);
+          getState().log(2, `Error inserting workflow_run row: ${wfRunId}`);
+          continue;
+        }
 
+        const success = await runHelper.rerun(wfRunId);
+        getState().log(
+          5,
+          `Rerun of workflow ${wfName} completed with status ${success}`,
+        );
+        if (!success) failedWorkflows.push(wfName);
+      }
+      if (failedWorkflows.length > 0)
+        return {
+          error: `Some workflows failed: ${failedWorkflows.join(", ")}`,
+        };
+      else
+        return {
+          notify: "All workflows completed successfully",
+        };
+    },
+    requireRow: false,
+    disableInBuilder: true,
+  },
   benchmark_user_workflow: {
     description: "Benchmark a recorded user workflow",
     configFields: async ({ table }) => {
@@ -244,7 +235,7 @@ module.exports = {
           label: "Workflow Run Relation",
           type: "String",
           sublabel:
-            "This relation points to a child-table to store re-run results (format: results_table.key_to_top_table)",
+            "This is a relation pointing to a child table that stores re-run results (format: results_table.key_to_top_table)",
           attributes: {
             options: wfRunRelOpts,
           },
@@ -280,7 +271,9 @@ module.exports = {
       if (typeof wfRunId === "string") throw new Error(wfRunId);
       const helper = new RerunHelper(table, row, wfRunRel, configuration);
       const success = await helper.rerun(wfRunId);
-      const msg = `Workflow benchmark completed: ${success ? "success" : "failed"}`;
+      const msg = `Workflow benchmark completed: ${
+        success ? "success" : "failed"
+      }`;
       getState().log(5, msg);
       return {
         notify: msg,
