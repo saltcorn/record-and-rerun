@@ -22,7 +22,7 @@ const get_state_fields = async () => [];
 const run = async (
   table_id,
   viewname,
-  { workflow_name_field, confirm_start_recording },
+  { workflow_name_field, confirm_start_recording, use_api_token },
   state,
   extra,
 ) => {
@@ -89,18 +89,24 @@ const run = async (
             document.getElementById('workflow_name').value
           );
           let aborted = false;
-          if (!api_token && !confirm(
+          ${
+            use_api_token
+              ? `
+          if ( !api_token && !confirm(
               "You do not have an API token set. " + 
               "Recording without an API token could lead to permissiion problems. " + 
               "Do you want to proceed?")
           ) aborted = true;
+          `
+              : ""
+          }
           if (workflow && !aborted) {
             const newCfg = {
               viewname: '${viewname}',
               recording: true,
               workflow: workflow,
               workflowName: document.getElementById('workflow_name').value,
-              api_token: api_token,
+              ${use_api_token ? "api_token: api_token," : ""}
             };
             RecordAndRerun.setCfg(newCfg);
             if (!await RecordAndRerun.startFromPublic()) {
@@ -161,6 +167,14 @@ const configuration_workflow = (cfg) =>
                 type: "Bool",
                 default: true,
               },
+              {
+                name: "use_api_token",
+                label: "Use API Token",
+                sublabel:
+                  "Use API token of current user for recording. Requires user to have an API token set.",
+                type: "Bool",
+                default: true,
+              },
             ],
           });
         },
@@ -199,7 +213,7 @@ const upload_events = async (
 const init_workflow = async (
   table_id,
   viewname,
-  { workflow_name_field },
+  { workflow_name_field, use_api_token },
   body,
   { req },
 ) => {
@@ -213,11 +227,17 @@ const init_workflow = async (
       },
       req.user,
     );
-    const newRow = await table.getRow({ [table.pk_name]: id });
-    const userDb = await User.findOne({ id: req.user.id });
-    return {
-      json: { success: "ok", created: newRow, api_token: userDb.api_token },
+    const result = {
+      json: {
+        success: "ok",
+        created: await table.getRow({ [table.pk_name]: id }),
+      },
     };
+    if (use_api_token) {
+      const userDb = await User.findOne({ id: req.user.id });
+      result.json.api_token = userDb.api_token;
+    }
+    return result;
   } catch (e) {
     getState().log(2, `Error initializing workflow: ${e.message}`);
     return { json: { error: e.message || "unknown error" } };
