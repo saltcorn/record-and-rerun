@@ -5,6 +5,7 @@ const Table = require("@saltcorn/data/models/table");
 const File = require("@saltcorn/data/models/file");
 const Field = require("@saltcorn/data/models/field");
 const db = require("@saltcorn/data/db");
+const { getState } = require("@saltcorn/data/db/state");
 
 const path = require("path");
 const fs = require("fs").promises;
@@ -134,7 +135,7 @@ const preparePlaywrightDir = async (testDir, workflowName, events) => {
 const runPlaywrightScript = async (testDir, numIterations, isBenchmark) => {
   const child = spawn(path.join(testDir, "run.sh"), {
     cwd: testDir,
-    stdio: "inherit",
+    stdio: ["ignore", "pipe", "pipe"], // capture stdout/stderr
     env: {
       ...process.env,
       NUM_ITERATIONS: isBenchmark ? String(numIterations) : "1",
@@ -142,13 +143,22 @@ const runPlaywrightScript = async (testDir, numIterations, isBenchmark) => {
     },
   });
   await new Promise((resolve, reject) => {
+    const state = getState();
     child.on("exit", async (code) => {
       if (code === 0) {
+        state.log(5, "Playwright tests completed successfully");
         resolve();
       } else reject(new Error(`Playwright tests failed with code ${code}`));
     });
     child.on("error", (err) => {
+      state.log(2, `Playwright process error: ${err.message}`);
       reject(err);
+    });
+    child.stdout.on("data", (data) => {
+      state.log(5, data.toString().trim());
+    });
+    child.stderr.on("data", (data) => {
+      state.log(2, data.toString().trim());
     });
   });
 };
