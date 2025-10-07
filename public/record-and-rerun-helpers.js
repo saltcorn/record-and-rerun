@@ -5,14 +5,13 @@ const RecordAndRerun = (() => {
       this.viewname = cfg.viewname;
       this.workflow = cfg.workflow;
       this.recording = cfg.recording || false;
+      this.api_token = cfg.api_token;
       this.currentUrl = new URL(window.location.href);
       this.initListeners();
     }
 
     checkUpload() {
-      return (
-        this.events.length >= 5 && this.currentUrl.pathname !== "/auth/login"
-      );
+      return this.events.length >= 5;
     }
 
     initListeners() {
@@ -129,16 +128,19 @@ const RecordAndRerun = (() => {
       persistEvents([]);
 
       try {
+        const body = {
+          events: eventsToUpload,
+          workflow_id: this.workflow.id,
+        };
+        if (this.api_token) body.access_token = this.api_token;
         const response = await fetch(`/view/${this.viewname}/upload_events`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
             "CSRF-Token": _sc_globalCsrf,
+            "X-Requested-With": "XMLHttpRequest",
           },
-          body: JSON.stringify({
-            events: eventsToUpload,
-            workflow_id: this.workflow.id,
-          }),
+          body: body,
         });
         if (response.ok) {
           const result = await response.json();
@@ -211,6 +213,7 @@ const RecordAndRerun = (() => {
         headers: {
           "Content-Type": "application/json",
           "CSRF-Token": _sc_globalCsrf,
+          "X-Requested-With": "XMLHttpRequest",
         },
         body: JSON.stringify({
           workflow_name: workflowName,
@@ -218,7 +221,7 @@ const RecordAndRerun = (() => {
       });
       const result = await response.json();
       console.log("Init workflow response:", result);
-      return result.created;
+      return { workflow: result.created, api_token: result.api_token };
     } catch (error) {
       console.error("Error initializing workflow:", error);
       notifyAlert({
@@ -235,6 +238,7 @@ const RecordAndRerun = (() => {
         headers: {
           "Content-Type": "application/json",
           "CSRF-Token": _sc_globalCsrf,
+          "X-Requested-With": "XMLHttpRequest",
         },
       });
       if (!response.ok) throw new Error("Failed to logout");

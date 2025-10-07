@@ -1,6 +1,7 @@
 const Workflow = require("@saltcorn/data/models/workflow");
 const Form = require("@saltcorn/data/models/form");
 const Table = require("@saltcorn/data/models/table");
+const User = require("@saltcorn/data/models/user");
 const {
   div,
   button,
@@ -83,16 +84,23 @@ const run = async (
         }
 
         window.initRecording = async () => {
-          const newWorkflow = await RecordAndRerun.initWorkflow(
+          const { workflow, api_token } = await RecordAndRerun.initWorkflow(
             '${viewname}', 
             document.getElementById('workflow_name').value
           );
-          if (newWorkflow) {
+          let aborted = false;
+          if (!api_token && !confirm(
+              "You do not have an API token set. " + 
+              "Recording without an API token could lead to permissiion problems. " + 
+              "Do you want to proceed?")
+          ) aborted = true;
+          if (workflow && !aborted) {
             const newCfg = {
               viewname: '${viewname}',
               recording: true,
-              workflow: newWorkflow,
-              workflowName: document.getElementById('workflow_name').value
+              workflow: workflow,
+              workflowName: document.getElementById('workflow_name').value,
+              api_token: api_token,
             };
             RecordAndRerun.setCfg(newCfg);
             if (!await RecordAndRerun.startFromPublic()) {
@@ -168,15 +176,18 @@ const upload_events = async (
   { req },
 ) => {
   try {
-    getState().log(5, `Uploading ${body.length} events`);
+    getState().log(5, `Uploading ${body.events?.length} events`);
     const { dataTblName, dataField, topFk } = parseDataField(data_field);
     const dataTbl = Table.findOne({ name: dataTblName });
-    if (!dataTbl) throw new Error(`Table ${dataTblName} not found`);
+    if (!dataTbl) throw new Error(`Table '${dataTblName}' not found`);
     for (const event of body.events || []) {
-      await dataTbl.insertRow({
-        [dataField]: event,
-        [topFk]: body.workflow_id,
-      });
+      await dataTbl.insertRow(
+        {
+          [dataField]: event,
+          [topFk]: body.workflow_id,
+        },
+        req.user,
+      );
     }
     return { json: { success: "ok" } };
   } catch (e) {
@@ -194,13 +205,19 @@ const init_workflow = async (
 ) => {
   try {
     getState().log(5, `Initializing workflow ${body.workflow_name}`);
-    const table = await Table.findOne({ id: table_id });
-    if (!table) throw new Error(`Table with id ${table_id} not found`);
-    const id = await table.insertRow({
-      [workflow_name_field]: body.workflow_name,
-    });
+    const table = Table.findOne(table_id);
+    if (!table) throw new Error(`Table with id '${table_id}' not found`);
+    const id = await table.insertRow(
+      {
+        [workflow_name_field]: body.workflow_name,
+      },
+      req.user,
+    );
     const newRow = await table.getRow({ [table.pk_name]: id });
-    return { json: { success: "ok", created: newRow } };
+    const userDb = await User.findOne({ id: req.user.id });
+    return {
+      json: { success: "ok", created: newRow, api_token: userDb.api_token },
+    };
   } catch (e) {
     getState().log(2, `Error initializing workflow: ${e.message}`);
     return { json: { error: e.message || "unknown error" } };
