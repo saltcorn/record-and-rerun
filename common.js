@@ -241,7 +241,6 @@ const calcStandardDeviation = (arr) => {
  */
 const calcStats = (allRunStats) => {
   const result = [];
-  const allMetrics = ["responseEnd", "domComplete", "LCP"];
   let statsLength = allRunStats[0].length;
   for (let pointIndex = 0; pointIndex < statsLength; pointIndex++) {
     const element = {
@@ -249,8 +248,10 @@ const calcStats = (allRunStats) => {
       responseEnd: [],
       domComplete: [],
       LCP: [],
+      correct: [],
     };
 
+    const allMetrics = ["responseEnd", "domComplete", "LCP", "correct"];
     for (const runStats of allRunStats) {
       if (runStats[pointIndex].url !== element.url)
         throw new Error("Inconsistent urls in stats");
@@ -260,12 +261,13 @@ const calcStats = (allRunStats) => {
     }
 
     const resultEntry = { url: element.url };
-    for (const key of allMetrics) {
+    for (const key of ["responseEnd", "domComplete", "LCP"]) {
       resultEntry[`${key}_mean`] = calcMean(element[key]);
       resultEntry[`${key}_standard_deviation`] = calcStandardDeviation(
         element[key],
       );
     }
+    resultEntry.correct = Math.round(calcMean(element.correct));
     result.push(resultEntry);
   }
 
