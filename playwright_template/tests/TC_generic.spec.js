@@ -24,16 +24,20 @@ test.describe("generic Test Suite", () => {
   });
   test("generic steps", async ({ browser }) => {
     const benchmarkResults = [];
+    let currentBenchmark = null;
     for (const event of testData.events) {
       if (!event || event.ignore) continue;
       switch (event.type) {
         case "page_info":
           console.log(`Navigating to: ${event.url}`);
-          await page.goto(event.url);
+          const response = await page.goto(event.url);
           if (doBenchmark) {
+            if (currentBenchmark) benchmarkResults.push(currentBenchmark);
             const benchData = await getBenchmarkMetrics(page);
+            const correctStatus = response.status() === 200;
+            benchData.correct = correctStatus ? 100 : 0;
             console.log(benchData);
-            benchmarkResults.push({ url: event.url, ...benchData });
+            currentBenchmark = { url: event.url, ...benchData };
           }
           break;
         case "click":
@@ -53,6 +57,10 @@ test.describe("generic Test Suite", () => {
           console.log(`Asserting text: ${event.text}`);
           const text = event.text;
           const content = await page.content();
+          const contains = content.includes(text);
+          if (!contains && doBenchmark && currentBenchmark) {
+            currentBenchmark.correct = 0;
+          }
           expect(content).toMatch(new RegExp(text, "i"));
           break;
         default:

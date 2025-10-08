@@ -5,6 +5,7 @@ const Table = require("@saltcorn/data/models/table");
 const File = require("@saltcorn/data/models/file");
 const Field = require("@saltcorn/data/models/field");
 const db = require("@saltcorn/data/db");
+const { getState } = require("@saltcorn/data/db/state");
 
 const path = require("path");
 const fs = require("fs").promises;
@@ -134,7 +135,7 @@ const preparePlaywrightDir = async (testDir, workflowName, events) => {
 const runPlaywrightScript = async (testDir, numIterations, isBenchmark) => {
   const child = spawn(path.join(testDir, "run.sh"), {
     cwd: testDir,
-    stdio: "inherit",
+    stdio: ["ignore", "pipe", "pipe"], // capture stdout/stderr
     env: {
       ...process.env,
       NUM_ITERATIONS: isBenchmark ? String(numIterations) : "1",
@@ -142,13 +143,22 @@ const runPlaywrightScript = async (testDir, numIterations, isBenchmark) => {
     },
   });
   await new Promise((resolve, reject) => {
+    const state = getState();
     child.on("exit", async (code) => {
       if (code === 0) {
+        state.log(5, "Playwright tests completed successfully");
         resolve();
       } else reject(new Error(`Playwright tests failed with code ${code}`));
     });
     child.on("error", (err) => {
+      state.log(2, `Playwright process error: ${err.message}`);
       reject(err);
+    });
+    child.stdout.on("data", (data) => {
+      state.log(5, data.toString().trim());
+    });
+    child.stderr.on("data", (data) => {
+      state.log(2, data.toString().trim());
     });
   });
 };
@@ -231,7 +241,6 @@ const calcStandardDeviation = (arr) => {
  */
 const calcStats = (allRunStats) => {
   const result = [];
-  const allMetrics = ["responseEnd", "domComplete", "LCP"];
   let statsLength = allRunStats[0].length;
   for (let pointIndex = 0; pointIndex < statsLength; pointIndex++) {
     const element = {
@@ -239,8 +248,10 @@ const calcStats = (allRunStats) => {
       responseEnd: [],
       domComplete: [],
       LCP: [],
+      correct: [],
     };
 
+    const allMetrics = ["responseEnd", "domComplete", "LCP", "correct"];
     for (const runStats of allRunStats) {
       if (runStats[pointIndex].url !== element.url)
         throw new Error("Inconsistent urls in stats");
@@ -250,12 +261,13 @@ const calcStats = (allRunStats) => {
     }
 
     const resultEntry = { url: element.url };
-    for (const key of allMetrics) {
+    for (const key of ["responseEnd", "domComplete", "LCP"]) {
       resultEntry[`${key}_mean`] = calcMean(element[key]);
       resultEntry[`${key}_standard_deviation`] = calcStandardDeviation(
         element[key],
       );
     }
+    resultEntry.correct = Math.round(calcMean(element.correct));
     result.push(resultEntry);
   }
 
