@@ -11,7 +11,9 @@ const RecordAndRerun = (() => {
     }
 
     checkUpload() {
-      return this.events.length >= 5;
+      if (this.currentUrl.pathname === "/auth/login" && !this.api_token)
+        return false;
+      else return this.events.length >= 5;
     }
 
     initListeners() {
@@ -132,17 +134,24 @@ const RecordAndRerun = (() => {
           events: eventsToUpload,
           workflow_id: this.workflow.id,
         };
-        if (this.api_token) body.access_token = this.api_token;
-        const response = await fetch(`/view/${this.viewname}/upload_events`, {
+        let url = null;
+        if (this.api_token) {
+          body.access_token = this.api_token;
+          `/scapi/run-view-route/${this.viewname}/upload_events`;
+        } else {
+          url = `/view/${this.viewname}/upload_events`;
+        }
+        const response = await fetch(url, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
             "CSRF-Token": _sc_globalCsrf,
             "X-Requested-With": "XMLHttpRequest",
           },
-          body: body,
+          body: JSON.stringify(body),
         });
-        if (response.ok) {
+        // okay for /scapi, not redirect for /view
+        if (response.ok && !response.redirected) {
           const result = await response.json();
           if (result.error) throw new Error(result.error);
           console.log("Events uploaded successfully.");
