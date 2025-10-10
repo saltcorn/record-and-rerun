@@ -137,7 +137,7 @@ const RecordAndRerun = (() => {
         let url = null;
         if (this.api_token) {
           body.access_token = this.api_token;
-          `/scapi/run-view-route/${this.viewname}/upload_events`;
+          url = `/scapi/run-view-route/${this.viewname}/upload_events`;
         } else {
           url = `/view/${this.viewname}/upload_events`;
         }
