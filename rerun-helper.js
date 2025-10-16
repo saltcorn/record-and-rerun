@@ -43,7 +43,7 @@ class RerunHelper {
     if (this.isBenchmark) this.benchDataField = benchmark_data_field;
     this.htmlReportFile = html_report_file;
     this.successFlagField = success_flag_field;
-    this.htmlReportDir = html_report_directory;
+    this.htmlReportDir = html_report_directory || "/";
   }
 
   async rerun(wfRunId) {
