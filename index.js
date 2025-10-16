@@ -94,6 +94,92 @@ const configuration_workflow = () =>
     ],
   });
 
+const writeInstallError = async (plugin, errorMsg) => {
+  getState().log(2, `Playwright installation error: ${errorMsg}`);
+  const errorCfg = {
+    ...(plugin.configuration || {}),
+    playwright_installation_finished: null,
+    playwright_installation_error: errorMsg,
+  };
+  plugin.configuration = errorCfg;
+  await plugin.upsert();
+  getState().processSend({
+    refresh_plugin_cfg: plugin.name,
+    tenant: db.getTenantSchema(),
+  });
+};
+
+const playwrightDepsInstaller = async (plugin) => {
+  getState().log(5, "Starting Playwright dependencies installation");
+  const child = spawn("npm", ["exec", "playwright", "install-deps"], {
+    stdio: "inherit",
+    cwd: __dirname,
+  });
+  return new Promise((resolve, reject) => {
+    child.on("close", async (code) => {
+      if (code === 0) {
+        getState().log(5, "Playwright dependencies installation completed");
+        resolve();
+      } else {
+        await writeInstallError(plugin, err.message);
+        reject(new Error(`playwright install-deps failed with code ${code}`));
+      }
+    });
+    child.on("error", async (err) => {
+      await writeInstallError(plugin, err.message);
+      reject(err);
+    });
+  });
+};
+
+const playwrightInstaller = async (plugin) => {
+  getState().log(5, "Starting Playwright installation");
+  const child = spawn("npm", ["exec", "playwright", "install"], {
+    stdio: "inherit",
+    cwd: __dirname,
+  });
+
+  plugin.configuration = {
+    ...(plugin.configuration || {}),
+    playwright_installation_started: new Date().valueOf(),
+    playwright_installation_finished: null,
+    playwright_installation_error: null,
+  };
+  await plugin.upsert();
+  getState().processSend({
+    refresh_plugin_cfg: plugin.name,
+    tenant: db.getTenantSchema(),
+  });
+
+  child.on("close", async (code, signal) => {
+    if (code === 0) {
+      getState().log(5, "Playwright installation completed");
+      plugin.configuration = {
+        ...(plugin.configuration || {}),
+        playwright_installation_finished: new Date().valueOf(),
+        playwright_installation_error: null,
+      };
+    } else {
+      const msg = `Playwright installation failed with code ${code} and signal ${signal}`;
+      getState().log(2, msg);
+      plugin.configuration = {
+        ...(plugin.configuration || {}),
+        playwright_installation_finished: null,
+        playwright_installation_error: msg,
+      };
+    }
+    await plugin.upsert();
+    getState().processSend({
+      refresh_plugin_cfg: plugin.name,
+      tenant: db.getTenantSchema(),
+    });
+  });
+
+  child.on("error", async (err) => {
+    await writeInstallError(plugin, err.message);
+  });
+};
+
 const routes = (config) => {
   return [
     {
@@ -102,69 +188,21 @@ const routes = (config) => {
       method: "post",
       callback: async (req, res) => {
         try {
-          getState().log(5, "Starting Playwright installation");
+          getState().log(5, "Playwright installation");
           let plugin = await Plugin.findOne({ name: "record-and-rerun" });
           if (!plugin) {
             plugin = await Plugin.findOne({
               name: "@saltcorn/record-and-rerun",
             });
           }
-
-          const child = spawn("npm", ["exec", "playwright", "install"], {
-            stdio: "inherit",
-            cwd: __dirname,
-          });
-
-          plugin.configuration = {
-            ...(plugin.configuration || {}),
-            playwright_installation_started: new Date().valueOf(),
-            playwright_installation_finished: null,
-            playwright_installation_error: null,
-          };
-          await plugin.upsert();
-          getState().processSend({
-            refresh_plugin_cfg: plugin.name,
-            tenant: db.getTenantSchema(),
-          });
-
-          child.on("close", async (code, signal) => {
-            if (code === 0) {
-              getState().log(5, "Playwright installation completed");
-              plugin.configuration = {
-                ...(plugin.configuration || {}),
-                playwright_installation_finished: new Date().valueOf(),
-                playwright_installation_error: null,
-              };
-            } else {
-              const msg = `Playwright installation failed with code ${code} and signal ${signal}`;
-              getState().log(2, msg);
-              plugin.configuration = {
-                ...(plugin.configuration || {}),
-                playwright_installation_finished: null,
-                playwright_installation_error: msg,
-              };
-            }
-            await plugin.upsert();
-            getState().processSend({
-              refresh_plugin_cfg: plugin.name,
-              tenant: db.getTenantSchema(),
+          playwrightDepsInstaller(plugin)
+            .then(() => {
+              playwrightInstaller(plugin);
+            })
+            .catch((err) => {
+              getState().log(2, "Unable to install Playwright dependencies: ");
             });
-          });
 
-          child.on("error", async (err) => {
-            getState().log(2, `Playwright installation error: ${err.message}`);
-            const errorCfg = {
-              ...(plugin.configuration || {}),
-              playwright_installation_finished: null,
-              playwright_installation_error: err.message,
-            };
-            plugin.configuration = errorCfg;
-            await plugin.upsert();
-            getState().processSend({
-              refresh_plugin_cfg: plugin.name,
-              tenant: db.getTenantSchema(),
-            });
-          });
           res.json({ notify: "Playwright installation started." });
         } catch (e) {
           const msg = `Error starting Playwright installation: ${e.message}`;
