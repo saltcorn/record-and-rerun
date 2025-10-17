@@ -74,17 +74,11 @@ class RerunHelper {
           const benchJson = calcStats(allRunStats);
           wfRunRow[this.benchDataField] = benchJson;
         }
-        if (this.htmlReportFile && this.htmlReportDir) {
-          const pathToServe = await copyHtmlReport(
-            this.testDir,
-            this.workflowName,
-            this.htmlReportDir,
-          );
-          wfRunRow[this.htmlReportFile] = pathToServe;
-        }
+        await this.handleReport(wfRunRow);
       }
     } catch (err) {
       getState().log(2, `Workflow rerun error: ${err.message}`);
+      await this.handleReport(wfRunRow);
       successFlag = false;
       if (wfRunRow && this.successFlagField)
         wfRunRow[this.successFlagField] = successFlag;
@@ -95,6 +89,21 @@ class RerunHelper {
       }
     }
     return successFlag;
+  }
+
+  async handleReport(wfRunRow) {
+    try {
+      if (this.htmlReportFile && this.htmlReportDir) {
+        const pathToServe = await copyHtmlReport(
+          this.testDir,
+          this.workflowName,
+          this.htmlReportDir,
+        );
+        wfRunRow[this.htmlReportFile] = pathToServe;
+      }
+    } catch (err) {
+      getState().log(2, `Unable to copy HTML report: ${err.message}`);
+    }
   }
 
   async loadEvents() {
