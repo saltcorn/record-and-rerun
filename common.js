@@ -2,6 +2,7 @@
  * Common functions for the record-and-rerun plugin
  */
 const Table = require("@saltcorn/data/models/table");
+const View = require("@saltcorn/data/models/view");
 const File = require("@saltcorn/data/models/file");
 const Field = require("@saltcorn/data/models/field");
 const db = require("@saltcorn/data/db");
@@ -274,6 +275,195 @@ const calcStats = (allRunStats) => {
   return result;
 };
 
+const createTables = async () => {
+  getState().log(5, "Creating session recording tables");
+  // recordings table
+  const sessions = await Table.create("session_recordings", {
+    min_role_read: 1,
+    min_role_write: 1,
+  });
+  await Field.create({
+    table: sessions,
+    name: "name",
+    label: "Name",
+    type: "String",
+    required: true,
+  });
+
+  // events table
+  const sessionEvents = await Table.create("session_events", {
+    min_role_read: 1,
+    min_role_write: 1,
+  });
+  await Field.create({
+    table: sessionEvents,
+    name: "session_recording",
+    label: "Session Recording",
+    type: "Key",
+    reftable_name: "session_recordings",
+    attributes: { summary_field: "name" },
+    required: true,
+  });
+  await Field.create({
+    table: sessionEvents,
+    name: "event_data",
+    label: "Event Data",
+    type: "JSON",
+    required: true,
+  });
+
+  // runs table
+  const sessionRuns = await Table.create("session_runs", {
+    min_role_read: 1,
+    min_role_write: 1,
+  });
+  await Field.create({
+    table: sessionRuns,
+    name: "session_recording",
+    label: "Session Recording",
+    type: "Key",
+    reftable_name: "session_recordings",
+    attributes: { summary_field: "name" },
+    required: true,
+  });
+  await Field.create({
+    table: sessionRuns,
+    name: "success",
+    label: "Success",
+    type: "Bool",
+    required: false,
+  });
+  await Field.create({
+    table: sessionRuns,
+    name: "benchmark_results",
+    label: "Benchmark Results",
+    type: "JSON",
+    required: false,
+  });
+  await Field.create({
+    table: sessionRuns,
+    name: "html_report",
+    label: "HTML Report",
+    type: "File",
+    required: false,
+  });
+
+  return { sessions, sessionEvents, sessionRuns };
+};
+
+const createViews = async (sessions, sessionEvents, sessionRuns) => {
+  getState().log(5, "Creating session recording views");
+  // recorder view
+  await View.create({
+    name: "Sessions Recorder",
+    viewtemplate: "RecordEvents",
+    table_id: sessions.id,
+    configuration: {
+      data_field: "session_events.event_data->session_recording",
+      workflow_name_field: "name",
+      confirm_start_recording: true,
+      use_api_token: true,
+    },
+    min_role: 1,
+  });
+
+  // recordings list with rerun-action
+  await View.create({
+    name: "Sessions List",
+    viewtemplate: "List",
+    table_id: sessions.id,
+    configuration: {
+      layout: {
+        besides: [
+          {
+            contents: {
+              type: "field",
+              fieldview: "as_text",
+              field_name: "name",
+              configuration: {},
+            },
+            header_label: "name",
+          },
+          {
+            contents: {
+              type: "action",
+              block: false,
+              rndid: "aaedc",
+              nsteps: 1,
+              confirm: false,
+              minRole: 1,
+              isFormula: {},
+              run_async: false,
+              action_icon: "",
+              action_name: "rerun_user_workflow",
+              action_size: "",
+              action_bgcol: "",
+              action_class: "",
+              action_label: "",
+              action_style: "btn-primary",
+              action_title: "",
+              configuration: {
+                data_field: "session_events.event_data->session_recording",
+                html_report_file: "html_report",
+                success_flag_field: "success",
+                workflow_name_field: "name",
+                html_report_directory: "html_report",
+                workflow_run_relation: "session_runs.session_recording",
+              },
+              step_only_ifs: "",
+              action_textcol: "",
+              action_bordercol: "",
+              step_action_names: "",
+            },
+            alignment: "Default",
+            col_width_units: "px",
+          },
+        ],
+      },
+      columns: [
+        {
+          type: "Field",
+          fieldview: "as_text",
+          field_name: "name",
+          configuration: {},
+        },
+        {
+          type: "Action",
+          rndid: "aaedc",
+          nsteps: 1,
+          confirm: false,
+          minRole: 1,
+          isFormula: {},
+          run_async: false,
+          action_icon: "",
+          action_name: "rerun_user_workflow",
+          action_size: "",
+          action_bgcol: "",
+          action_class: "",
+          action_label: "",
+          action_style: "btn-primary",
+          action_title: "",
+          configuration: {
+            data_field: "session_events.event_data->session_recording",
+            html_report_file: "html_report",
+            success_flag_field: "success",
+            workflow_name_field: "name",
+            html_report_directory: "html_report",
+            workflow_run_relation: "session_runs.session_recording",
+          },
+          step_only_ifs: "",
+          action_textcol: "",
+          action_bordercol: "",
+          step_action_names: "",
+        },
+      ],
+    },
+    min_role: 1,
+  });
+
+  // session-reruns list
+};
+
 module.exports = {
   cfgOpts,
   parseDataField,
@@ -285,4 +475,6 @@ module.exports = {
   calcStats,
   readBenchmarkFiles,
   insertWfRunRow,
+  createTables,
+  createViews,
 };

@@ -7,6 +7,7 @@ const {
   benchmark_user_workflow,
   rerun_multiple_workflows,
 } = require("./actions");
+const { createTables, createViews } = require("./common");
 const { getState } = require("@saltcorn/data/db/state");
 const db = require("@saltcorn/data/db");
 
@@ -14,6 +15,14 @@ const { spawn } = require("child_process");
 
 const configuration_workflow = () =>
   new Workflow({
+    onDone: async (context) => {
+      console.log("context onDone", context);
+      const { sessions, sessionEvents, sessionRuns } = await createTables();
+      await createViews(sessions, sessionEvents, sessionRuns);
+      return {
+        context,
+      };
+    },
     steps: [
       {
         name: "Record and Rerun Settings",
@@ -26,6 +35,16 @@ const configuration_workflow = () =>
                 "npm exec install playwright",
               )}.` +
               "or skip it if your server already has Playwright installed.",
+            fields: [
+              {
+                name: "setup_canoncial_structures",
+                label: "TODO",
+                sublabel: "TODO",
+                type: "Bool",
+                default: false,
+              },
+            ],
+
             additionalHeaders: [
               {
                 headerTag: `<script>
@@ -87,7 +106,6 @@ const configuration_workflow = () =>
                 onclick: "run_install_playwright()",
               },
             ],
-            fields: [],
           });
         },
       },
