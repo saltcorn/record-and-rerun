@@ -2,6 +2,7 @@ const Workflow = require("@saltcorn/data/models/workflow");
 const Form = require("@saltcorn/data/models/form");
 const Table = require("@saltcorn/data/models/table");
 const User = require("@saltcorn/data/models/user");
+const Field = require("@saltcorn/data/models/field");
 const {
   div,
   button,
@@ -244,11 +245,7 @@ const init_workflow = async (
   }
 };
 
-const virtual_triggers = (
-  table_id,
-  viewname,
-  { data_field, workflow_name_field },
-) => {
+const virtual_triggers = (table_id, viewname, { workflow_name_field }) => {
   const table = Table.findOne({ id: table_id });
   return [
     {
@@ -257,13 +254,20 @@ const virtual_triggers = (
       run: async (row) => {
         getState().log(
           5,
-          `Deleting events for workflow id ${row[table.pk_name]}`,
+          `Deleting rows with a ref to workflow with id '${row[table.pk_name]}'`,
         );
-        const { dataTblName, topFk } = parseDataField(data_field);
-        const dataTbl = Table.findOne({ name: dataTblName });
-        if (!dataTbl) throw new Error(`Table ${dataTblName} not found`);
+        const refFields = await Field.find({ reftable_name: table.name });
+        for (const rf of refFields) {
+          const refTable = Table.findOne(rf.table_id);
+          if (refTable) {
+            await refTable.deleteRows({ [rf.name]: row[table.pk_name] });
+          }
+        }
 
-        await dataTbl.deleteRows({ [topFk]: row[table.pk_name] });
+        getState().log(
+          5,
+          `Deleting test directory for workflow '${row[workflow_name_field]}'`,
+        );
         const safeWorkflowName = row[workflow_name_field].replace(
           /[^a-zA-Z0-9_-]/g,
           "_",
@@ -274,10 +278,6 @@ const virtual_triggers = (
         } catch (e) {
           getState().log(2, `Error deleting test directory: ${e.message}`);
         }
-
-        // TODO
-        // find re-run and benchmark actions for this table and
-        // delete rows in workflow_run_relation for row[table.pk_name]
       },
     },
   ];
