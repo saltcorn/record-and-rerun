@@ -69,18 +69,19 @@ const RecordAndRerun = (() => {
 
       document.addEventListener("contextmenu", (event) => {
         if (this.recording) {
+          event.preventDefault();
           const selected = window.getSelection();
           const text = selected.toString().trim();
+          const menu = document.createElement("div");
+          menu.className = "custom-menu";
+          menu.style.top = event.pageY + "px";
+          menu.style.left = event.pageX + "px";
+
+          // assert text present option
           if (text.length > 0) {
-            event.preventDefault();
-            const menu = document.createElement("div");
-            menu.className = "custom-menu";
-            menu.style.top = event.pageY + "px";
-            menu.style.left = event.pageX + "px";
-            const item = document.createElement("div");
-            item.textContent = "Assert Text is present";
-            item.onclick = async () => {
-              console.log("Assert Text is present clicked");
+            const textPresentItem = document.createElement("div");
+            textPresentItem.textContent = "Assert Text is present";
+            textPresentItem.onclick = async () => {
               this.events.push({
                 type: "assert_text",
                 text: text,
@@ -90,9 +91,26 @@ const RecordAndRerun = (() => {
               if (this.checkUpload()) await this.uploadEvents();
               selected.removeAllRanges();
             };
-            menu.appendChild(item);
-            document.body.appendChild(menu);
+            menu.appendChild(textPresentItem);
           }
+
+          // assert element present option
+          const elementPresentItem = document.createElement("div");
+          elementPresentItem.textContent = "Assert Element is present";
+          elementPresentItem.onclick = async () => {
+            const element = event.target;
+            const selector = getUniqueSelector(element);
+            this.events.push({
+              type: "assert_element",
+              selector: selector,
+              timestamp: new Date().toISOString(),
+            });
+            persistEvents(this.events);
+            if (this.checkUpload()) await this.uploadEvents();
+            selected.removeAllRanges();
+          };
+          menu.appendChild(elementPresentItem);
+          document.body.appendChild(menu);
         }
       });
     }
