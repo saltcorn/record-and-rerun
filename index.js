@@ -7,6 +7,12 @@ const {
   benchmark_user_workflow,
   rerun_multiple_workflows,
 } = require("./actions");
+const {
+  getTablesIfExists,
+  getExistingViews,
+  createTables,
+  createViews,
+} = require("./common");
 const { getState } = require("@saltcorn/data/db/state");
 const db = require("@saltcorn/data/db");
 
@@ -14,18 +20,43 @@ const { spawn } = require("child_process");
 
 const configuration_workflow = () =>
   new Workflow({
+    onDone: async (context) => {
+      if (context.setup_schema) {
+        const schema = (await getTablesIfExists()) || (await createTables());
+        const views = await getExistingViews(schema);
+        await createViews(schema, views);
+      }
+      return {
+        context,
+      };
+    },
     steps: [
       {
         name: "Record and Rerun Settings",
         form: async (context) => {
+          const fields = [];
+          const schema = await getTablesIfExists();
+          const existingViews = schema ? await getExistingViews(schema) : null;
+          if (!schema || !existingViews.allViewsExist) {
+            fields.push({
+              name: "setup_schema",
+              label: "Setup schema",
+              sublabel:
+                "Prepare a basic database schema with views for Record and Rerun. " +
+                "If the tables already exist, only the views will be created.",
+              type: "Bool",
+              default: true,
+            });
+          }
           return new Form({
             blurb:
-              "This plugin allows recording user interactions and rerunning them later. " +
+              "This plugin allows recording user interactions (session) and rerunning them later. " +
               "For this you will need the Playwright framework installed on your server. " +
               `Click 'install Playwright' to run ${code(
                 "npm exec install playwright",
               )}.` +
               "or skip it if your server already has Playwright installed.",
+            fields: fields,
             additionalHeaders: [
               {
                 headerTag: `<script>
@@ -87,7 +118,6 @@ const configuration_workflow = () =>
                 onclick: "run_install_playwright()",
               },
             ],
-            fields: [],
           });
         },
       },

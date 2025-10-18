@@ -2,6 +2,7 @@
  * Common functions for the record-and-rerun plugin
  */
 const Table = require("@saltcorn/data/models/table");
+const View = require("@saltcorn/data/models/view");
 const File = require("@saltcorn/data/models/file");
 const Field = require("@saltcorn/data/models/field");
 const db = require("@saltcorn/data/db");
@@ -274,6 +275,567 @@ const calcStats = (allRunStats) => {
   return result;
 };
 
+const getTablesIfExists = async () => {
+  const sessions = await Table.findOne({ name: "session_recordings" });
+  const sessionEvents = await Table.findOne({ name: "session_events" });
+  const sessionRuns = await Table.findOne({ name: "session_runs" });
+  if (!sessions || !sessionEvents || !sessionRuns) return null;
+
+  const eventDataField = sessionEvents.fields.find(
+    (f) => f.type.name === "JSON",
+  );
+  const eventsToSessFk = sessionEvents
+    .getForeignKeys()
+    .find((fk) => fk.reftable_name === "session_recordings");
+
+  const runResultsField = sessionRuns.fields.find(
+    (f) => f.type.name === "JSON",
+  );
+  const resultsToSessFk = sessionRuns
+    .getForeignKeys()
+    .find((fk) => fk.reftable_name === "session_recordings");
+
+  if (
+    !eventDataField ||
+    !eventsToSessFk ||
+    !runResultsField ||
+    !resultsToSessFk
+  )
+    return null;
+
+  return { sessions, sessionEvents, sessionRuns };
+};
+
+const createTables = async () => {
+  getState().log(5, "Creating session recording tables");
+  // recordings table
+  const sessions = await Table.create("session_recordings", {
+    min_role_read: 1,
+    min_role_write: 1,
+  });
+  await Field.create({
+    table: sessions,
+    name: "name",
+    label: "Name",
+    type: "String",
+    required: true,
+  });
+
+  // events table
+  const sessionEvents = await Table.create("session_events", {
+    min_role_read: 1,
+    min_role_write: 1,
+  });
+  await Field.create({
+    table: sessionEvents,
+    name: "session_recording",
+    label: "Session Recording",
+    type: "Key",
+    reftable_name: "session_recordings",
+    attributes: { summary_field: "name" },
+    required: true,
+  });
+  await Field.create({
+    table: sessionEvents,
+    name: "event_data",
+    label: "Event Data",
+    type: "JSON",
+    required: true,
+  });
+
+  // runs table
+  const sessionRuns = await Table.create("session_runs", {
+    min_role_read: 1,
+    min_role_write: 1,
+  });
+  await Field.create({
+    table: sessionRuns,
+    name: "session_recording",
+    label: "Session Recording",
+    type: "Key",
+    reftable_name: "session_recordings",
+    attributes: { summary_field: "name" },
+    required: true,
+  });
+  await Field.create({
+    table: sessionRuns,
+    name: "success",
+    label: "Success",
+    type: "Bool",
+    required: false,
+  });
+  await Field.create({
+    table: sessionRuns,
+    name: "benchmark_results",
+    label: "Benchmark Results",
+    type: "JSON",
+    required: false,
+  });
+  await Field.create({
+    table: sessionRuns,
+    name: "html_report",
+    label: "HTML Report",
+    type: "File",
+    required: false,
+  });
+
+  return { sessions, sessionEvents, sessionRuns };
+};
+
+const getExistingViews = async ({ sessions, sessionEvents, sessionRuns }) => {
+  const recorderView = await View.findOne({
+    name: "Sessions Recorder",
+    table_id: sessions.id,
+    viewtemplate: "RecordEvents",
+  });
+  const sessionEventsListView = await View.findOne({
+    name: "Session Events List",
+    table_id: sessionEvents.id,
+    viewtemplate: "List",
+  });
+  const sessionsListView = await View.findOne({
+    name: "Sessions List",
+    table_id: sessions.id,
+    viewtemplate: "List",
+  });
+  const sessionRunsListView = await View.findOne({
+    name: "Session Runs List",
+    table_id: sessionRuns.id,
+    viewtemplate: "List",
+  });
+  const benchmarkRunsListView = await View.findOne({
+    name: "Session Benchmark Runs List",
+    table_id: sessionRuns.id,
+    viewtemplate: "List",
+  });
+
+  return {
+    recorderView,
+    sessionEventsListView,
+    sessionsListView,
+    sessionRunsListView,
+    benchmarkRunsListView,
+    allViewsExist:
+      recorderView &&
+      sessionEventsListView &&
+      sessionsListView &&
+      sessionRunsListView &&
+      benchmarkRunsListView,
+  };
+};
+
+const createViews = async (
+  { sessions, sessionEvents, sessionRuns },
+  {
+    recorderView,
+    sessionEventsListView,
+    sessionsListView,
+    sessionRunsListView,
+    benchmarkRunsListView,
+  },
+) => {
+  getState().log(5, "Creating session recording views");
+  // recorder view ('Sessions Recorder')
+  if (!recorderView) {
+    await View.create({
+      name: "Sessions Recorder",
+      viewtemplate: "RecordEvents",
+      table_id: sessions.id,
+      configuration: {
+        data_field: "session_events.event_data->session_recording",
+        workflow_name_field: "name",
+        confirm_start_recording: true,
+        use_api_token: true,
+      },
+      min_role: 1,
+    });
+  }
+
+  // list of events ('Session Events List')
+  if (!sessionEventsListView) {
+    await View.create({
+      name: "Session Events List",
+      viewtemplate: "List",
+      table_id: sessionEvents.id,
+      configuration: {
+        layout: {
+          besides: [
+            {
+              contents: {
+                type: "JoinField",
+                fieldview: "as_text",
+                join_field: "session_recording.name",
+                configuration: {},
+              },
+              header_label: "Session Recording",
+            },
+            {
+              contents: {
+                type: "field",
+                fieldview: "show",
+                field_name: "event_data",
+                configuration: {
+                  fieldview: "as_json",
+                  field_name: "event_data",
+                  configuration: {},
+                },
+              },
+              header_label: "Event Data",
+            },
+          ],
+          list_columns: true,
+        },
+        columns: [
+          {
+            type: "JoinField",
+            fieldview: "as_text",
+            join_field: "session_recording.name",
+            configuration: {},
+          },
+          {
+            type: "Field",
+            fieldview: "show",
+            field_name: "event_data",
+            configuration: {
+              fieldview: "as_json",
+              field_name: "event_data",
+              configuration: {},
+            },
+          },
+        ],
+      },
+      min_role: 1,
+    });
+  }
+
+  // list of recordings with actions to rerun or benchmark ('Sessions List')
+  if (!sessionsListView) {
+    await View.create({
+      name: "Sessions List",
+      viewtemplate: "List",
+      table_id: sessions.id,
+      configuration: {
+        layout: {
+          besides: [
+            {
+              contents: {
+                type: "field",
+                fieldview: "as_text",
+                field_name: "name",
+                configuration: {},
+              },
+              header_label: "name",
+            },
+            {
+              contents: {
+                type: "action",
+                block: false,
+                rndid: "aaedc",
+                nsteps: 1,
+                confirm: false,
+                minRole: 1,
+                isFormula: {},
+                run_async: false,
+                action_icon: "",
+                action_name: "rerun_user_workflow",
+                action_size: "",
+                action_bgcol: "",
+                action_class: "",
+                action_label: "",
+                action_style: "btn-primary",
+                action_title: "",
+                configuration: {
+                  data_field: "session_events.event_data->session_recording",
+                  html_report_file: "html_report",
+                  success_flag_field: "success",
+                  workflow_name_field: "name",
+                  html_report_directory: "",
+                  workflow_run_relation: "session_runs.session_recording",
+                },
+                step_only_ifs: "",
+                action_textcol: "",
+                action_bordercol: "",
+                step_action_names: "",
+              },
+              alignment: "Default",
+              col_width_units: "px",
+            },
+            {
+              contents: {
+                type: "action",
+                block: false,
+                rndid: "7faf36",
+                nsteps: 1,
+                confirm: false,
+                minRole: 100,
+                isFormula: {},
+                action_icon: "",
+                action_name: "benchmark_user_workflow",
+                action_label: "",
+                configuration: {
+                  data_field: "session_events.event_data->session_recording",
+                  num_iterations: 5,
+                  success_flag_field: "success",
+                  workflow_name_field: "name",
+                  benchmark_data_field: "benchmark_results",
+                  workflow_run_relation: "session_runs.session_recording",
+                },
+              },
+              alignment: "Default",
+              col_width_units: "px",
+            },
+          ],
+          list_columns: true,
+        },
+        columns: [
+          {
+            type: "Field",
+            fieldview: "as_text",
+            field_name: "name",
+            configuration: {},
+          },
+          {
+            type: "Action",
+            rndid: "aaedc",
+            nsteps: 1,
+            confirm: false,
+            minRole: 1,
+            isFormula: {},
+            run_async: false,
+            action_icon: "",
+            action_name: "rerun_user_workflow",
+            action_size: "",
+            action_bgcol: "",
+            action_class: "",
+            action_label: "",
+            action_style: "btn-primary",
+            action_title: "",
+            configuration: {
+              data_field: "session_events.event_data->session_recording",
+              html_report_file: "html_report",
+              success_flag_field: "success",
+              workflow_name_field: "name",
+              html_report_directory: "",
+              workflow_run_relation: "session_runs.session_recording",
+            },
+            step_only_ifs: "",
+            action_textcol: "",
+            action_bordercol: "",
+            step_action_names: "",
+          },
+
+          {
+            type: "Action",
+            rndid: "7faf36",
+            nsteps: 1,
+            confirm: false,
+            minRole: 1,
+            isFormula: {},
+            run_async: false,
+            action_icon: "",
+            action_name: "benchmark_user_workflow",
+            action_size: "",
+            action_bgcol: "",
+            action_class: "",
+            action_label: "",
+            action_style: "btn-primary",
+            action_title: "",
+            configuration: {
+              data_field: "session_events.event_data->session_recording",
+              num_iterations: 5,
+              success_flag_field: "success",
+              workflow_name_field: "name",
+              benchmark_data_field: "benchmark_results",
+              workflow_run_relation: "session_runs.session_recording",
+            },
+            step_only_ifs: "",
+            action_textcol: "",
+            action_bordercol: "",
+            step_action_names: "",
+          },
+        ],
+      },
+      min_role: 1,
+    });
+  }
+
+  // list of reruns with success flag and report link ('Session Runs List')
+  if (!sessionRunsListView) {
+    await View.create({
+      name: "Session Runs List",
+      description: "List of session rerun results (benchmarks excluded)",
+      viewtemplate: "List",
+      table_id: sessionRuns.id,
+      configuration: {
+        layout: {
+          besides: [
+            {
+              contents: {
+                type: "join_field",
+                block: false,
+                fieldview: "as_text",
+                textStyle: "",
+                join_field: "session_recording.name",
+                configuration: {},
+              },
+              header_label: "Session Recording",
+            },
+            {
+              contents: {
+                type: "field",
+                fieldview: "show",
+                field_name: "success",
+                configuration: {},
+              },
+              header_label: "Success",
+            },
+            {
+              contents: {
+                type: "field",
+                fieldview: "Download link",
+                field_name: "report",
+                configuration: { button_style: " " },
+              },
+              header_label: "Report",
+            },
+            {
+              contents: {
+                type: "field",
+                block: false,
+                fieldview: "Download link",
+                textStyle: "",
+                field_name: "html_report",
+                configuration: {
+                  button_style: " ",
+                },
+              },
+              alignment: "Default",
+              header_label: "Report",
+              col_width_units: "px",
+            },
+          ],
+          list_columns: true,
+        },
+        columns: [
+          {
+            type: "JoinField",
+            fieldview: "as_text",
+            join_field: "session_recording.name",
+            configuration: {},
+          },
+          {
+            type: "Field",
+            fieldview: "show",
+            field_name: "success",
+            configuration: {},
+          },
+          {
+            type: "Field",
+            fieldview: "Download link",
+            field_name: "report",
+            configuration: {
+              button_style: " ",
+            },
+          },
+          {
+            type: "Field",
+            block: false,
+            fieldview: "Download link",
+            textStyle: "",
+            field_name: "html_report",
+            configuration: {
+              button_style: " ",
+            },
+          },
+        ],
+        default_state: {
+          include_fml: "benchmark_results === null",
+        },
+      },
+      min_role: 1,
+    });
+  }
+
+  // list of benchmarks to see the stats ('Session Benchmark Runs List')
+  if (!benchmarkRunsListView) {
+    await View.create({
+      name: "Session Benchmark Runs List",
+      description: "List of session benchmark results (reruns excluded)",
+      viewtemplate: "List",
+      table_id: sessionRuns.id,
+      configuration: {
+        layout: {
+          besides: [
+            {
+              contents: {
+                type: "join_field",
+                block: false,
+                fieldview: "as_text",
+                textStyle: "",
+                join_field: "session_recording.name",
+                configuration: {},
+              },
+              header_label: "Session Recording",
+            },
+            {
+              contents: {
+                type: "Field",
+                fieldview: "show",
+                field_name: "success",
+                configuration: {},
+              },
+            },
+            {
+              contents: {
+                type: "field",
+                fieldview: "show",
+                field_name: "benchmark_results",
+                configuration: {
+                  fieldview: "as_json",
+                  field_name: "benchmark_results",
+                  configuration: {},
+                },
+              },
+              header_label: "Benchmark Results",
+            },
+          ],
+          list_columns: true,
+        },
+        columns: [
+          {
+            type: "JoinField",
+            block: false,
+            fieldview: "as_text",
+            textStyle: "",
+            join_field: "session_recording.name",
+            configuration: {},
+          },
+          {
+            type: "Field",
+            fieldview: "show",
+            field_name: "success",
+            configuration: {},
+          },
+          {
+            type: "Field",
+            fieldview: "show",
+            field_name: "benchmark_results",
+            configuration: {
+              fieldview: "as_json",
+              field_name: "benchmark_results",
+              configuration: {},
+            },
+          },
+        ],
+        default_state: {
+          include_fml: "benchmark_results !== null",
+        },
+      },
+      min_role: 1,
+    });
+  }
+};
+
 module.exports = {
   cfgOpts,
   parseDataField,
@@ -285,4 +847,8 @@ module.exports = {
   calcStats,
   readBenchmarkFiles,
   insertWfRunRow,
+  createTables,
+  createViews,
+  getTablesIfExists,
+  getExistingViews,
 };
