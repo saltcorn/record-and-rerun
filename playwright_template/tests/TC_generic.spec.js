@@ -28,7 +28,7 @@ test.describe("generic Test Suite", () => {
     for (const event of testData.events) {
       if (!event || event.ignore) continue;
       switch (event.type) {
-        case "page_info":
+        case "page_info": {
           console.log(`Navigating to: ${event.url}`);
           const response = await page.goto(event.url);
           if (doBenchmark) {
@@ -40,20 +40,23 @@ test.describe("generic Test Suite", () => {
             currentBenchmark = { url: event.url, ...benchData };
           }
           break;
-        case "click":
+        }
+        case "click": {
           console.log(`Clicking on: ${event.selector}`);
           const element = await page.locator(event.selector);
           await element.click();
           await page.waitForTimeout(500);
           break;
-        case "keydown":
+        }
+        case "keydown": {
           console.log(`Typing: ${event.key}`);
           if (event.key) {
             if (event.key.length > 1) await page.keyboard.press(event.key);
             else await page.keyboard.type(event.key);
           }
           break;
-        case "assert_text":
+        }
+        case "assert_text": {
           console.log(`Asserting text: ${event.text}`);
           const text = event.text;
           const content = await page.content();
@@ -63,6 +66,13 @@ test.describe("generic Test Suite", () => {
           }
           expect(content).toMatch(new RegExp(text, "i"));
           break;
+        }
+        case "assert_element": {
+          console.log(`Asserting element: ${event.selector}`);
+          const element = await page.locator(event.selector);
+          await expect(element).toBeVisible();
+          break;
+        }
         default:
           console.log(`Unknown event type: ${event.type}`);
       }
