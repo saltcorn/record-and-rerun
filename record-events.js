@@ -131,7 +131,7 @@ const configuration_workflow = (cfg) =>
             fields: [
               {
                 name: "workflow_name_field",
-                label: "Workflow Name",
+                label: "Session Name",
                 type: "String",
                 required: true,
                 attributes: {
