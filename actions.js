@@ -17,7 +17,7 @@ const rerunCfgFields = async (table) => {
   return [
     {
       name: "workflow_name_field",
-      label: "Workflow Name",
+      label: "Session Name",
       type: "String",
       required: true,
       attributes: {
@@ -38,7 +38,7 @@ const rerunCfgFields = async (table) => {
     },
     {
       name: "workflow_run_relation",
-      label: "Workflow Run Relation",
+      label: "Session Run Relation",
       type: "String",
       sublabel:
         "This is an optional relation pointing to a child table that stores re-run results (format: results_table.key_to_top_table)",
@@ -211,7 +211,7 @@ module.exports = {
         },
         {
           name: "workflow_name_field",
-          label: "Workflow Name",
+          label: "Session Name",
           type: "String",
           required: true,
           attributes: {
@@ -232,7 +232,7 @@ module.exports = {
         },
         {
           name: "workflow_run_relation",
-          label: "Workflow Run Relation",
+          label: "Session Run Relation",
           type: "String",
           sublabel:
             "This is a relation pointing to a child table that stores re-run results (format: results_table.key_to_top_table)",
