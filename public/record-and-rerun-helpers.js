@@ -7,6 +7,7 @@ const RecordAndRerun = (() => {
       this.recording = cfg.recording || false;
       this.api_token = cfg.api_token;
       this.currentUrl = new URL(window.location.href);
+      this.inErrorState = false;
       this.initListeners();
     }
 
@@ -195,13 +196,20 @@ const RecordAndRerun = (() => {
           if (result.error) throw new Error(result.error);
           console.log("Events uploaded successfully.");
           this.events = [];
-        } else throw new Error("Failed to upload events");
+        } else
+          throw new Error(
+            `Failed to upload events${this.api_token ? "" : ": No API token configured"}`,
+          );
+          this.inErrorState = false;
       } catch (error) {
         console.error("Error uploading events:", error);
-        notifyAlert({
-          type: "danger",
-          text: error.message || "Error uploading events",
-        });
+        if (!this.inErrorState) {
+          notifyAlert({
+            type: "danger",
+            text: error.message || "Error uploading events",
+          });
+          this.inErrorState = true;
+        }
         this.events = eventsToUpload.concat(this.events);
       }
     }
