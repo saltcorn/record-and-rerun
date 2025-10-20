@@ -445,7 +445,6 @@ const createViews = async (
         data_field: "session_events.event_data->session_recording",
         workflow_name_field: "name",
         confirm_start_recording: true,
-        use_api_token: true,
       },
       min_role: 1,
     });

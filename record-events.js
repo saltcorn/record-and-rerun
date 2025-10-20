@@ -13,7 +13,7 @@ const {
   input,
   h5,
 } = require("@saltcorn/markup/tags");
-const { getState } = require("@saltcorn/data/db/state");
+const { getState, features } = require("@saltcorn/data/db/state");
 const { cfgOpts, parseDataField, createTestDirName } = require("./common");
 
 const fs = require("fs").promises;
@@ -23,7 +23,7 @@ const get_state_fields = async () => [];
 const run = async (
   table_id,
   viewname,
-  { workflow_name_field, confirm_start_recording, use_api_token },
+  { workflow_name_field, confirm_start_recording },
   state,
   extra,
 ) => {
@@ -89,25 +89,13 @@ const run = async (
             '${viewname}', 
             document.getElementById('workflow_name').value
           );
-          let aborted = false;
-          ${
-            use_api_token
-              ? `
-          if ( !api_token && !confirm(
-              "You do not have an API token set. " + 
-              "Recording without an API token could lead to permissiion problems. " + 
-              "Do you want to proceed?")
-          ) aborted = true;
-          `
-              : ""
-          }
-          if (workflow && !aborted) {
+          if (workflow) {
             const newCfg = {
               viewname: '${viewname}',
               recording: true,
               workflow: workflow,
               workflowName: document.getElementById('workflow_name').value,
-              ${use_api_token ? "api_token: api_token," : ""}
+              ${features.api_view_route ? "api_token: api_token," : ""}
             };
             RecordAndRerun.setCfg(newCfg);
             if (!await RecordAndRerun.startFromPublic()) {
@@ -168,14 +156,6 @@ const configuration_workflow = (cfg) =>
                 type: "Bool",
                 default: true,
               },
-              {
-                name: "use_api_token",
-                label: "Use API Token",
-                sublabel:
-                  "Use API token of current user for recording. Requires user to have an API token set.",
-                type: "Bool",
-                default: true,
-              },
             ],
           });
         },
@@ -214,7 +194,7 @@ const upload_events = async (
 const init_workflow = async (
   table_id,
   viewname,
-  { workflow_name_field, use_api_token },
+  { workflow_name_field },
   body,
   { req },
 ) => {
@@ -234,9 +214,13 @@ const init_workflow = async (
         created: await table.getRow({ [table.pk_name]: id }),
       },
     };
-    if (use_api_token) {
+    if (features.api_view_route) {
       const userDb = await User.findOne({ id: req.user.id });
-      result.json.api_token = userDb.api_token;
+      if (userDb?.api_token) result.json.api_token = userDb.api_token;
+      else if (userDb?.listApiTokens) {
+        const tokens = await userDb.listApiTokens();
+        if (tokens.length > 0) result.json.api_token = tokens[0].token;
+      }
     }
     return result;
   } catch (e) {
