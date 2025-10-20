@@ -67,6 +67,17 @@ test.describe("generic Test Suite", () => {
           expect(content).toMatch(new RegExp(text, "i"));
           break;
         }
+        case "assert_text_not_present": {
+          console.log(`Asserting text not present: ${event.text}`);
+          const text = event.text;
+          const content = await page.content();
+          const contains = content.includes(text);
+          if (contains && doBenchmark && currentBenchmark) {
+            currentBenchmark.correct = 0;
+          }
+          expect(content).not.toMatch(new RegExp(text, "i"));
+          break;
+        }
         case "assert_element": {
           console.log(`Asserting element: ${event.selector}`);
           const element = await page.locator(event.selector);

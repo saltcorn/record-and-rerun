@@ -77,7 +77,7 @@ const RecordAndRerun = (() => {
           menu.style.top = event.pageY + "px";
           menu.style.left = event.pageX + "px";
 
-          // assert text present option
+          // assert text present
           if (text.length > 0) {
             const textPresentItem = document.createElement("div");
             textPresentItem.textContent = "Assert Text is present";
@@ -94,7 +94,28 @@ const RecordAndRerun = (() => {
             menu.appendChild(textPresentItem);
           }
 
-          // assert element present option
+          // assert text not present
+          const textNotPresentItem = document.createElement("div");
+          textNotPresentItem.textContent = "Assert Text is not present";
+          textNotPresentItem.onclick = async () => {
+            // prompt for the text to assert not present
+            let textNotPresent = prompt(
+              "Enter the text to assert is not present:",
+              text,
+            );
+            if (textNotPresent && textNotPresent.trim().length > 0) {
+              this.events.push({
+                type: "assert_text_not_present",
+                text: textNotPresent.trim(),
+                timestamp: new Date().toISOString(),
+              });
+              persistEvents(this.events);
+              if (this.checkUpload()) await this.uploadEvents();
+            }
+          };
+          menu.appendChild(textNotPresentItem);
+
+          // assert element present
           const elementPresentItem = document.createElement("div");
           elementPresentItem.textContent = "Assert Element is present";
           elementPresentItem.onclick = async () => {
