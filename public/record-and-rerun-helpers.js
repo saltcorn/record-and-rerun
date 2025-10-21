@@ -200,7 +200,7 @@ const RecordAndRerun = (() => {
           throw new Error(
             `Failed to upload events${this.api_token ? "" : ": No API token configured"}`,
           );
-          this.inErrorState = false;
+        this.inErrorState = false;
       } catch (error) {
         console.error("Error uploading events:", error);
         if (!this.inErrorState) {
@@ -244,7 +244,10 @@ const RecordAndRerun = (() => {
       let selector =
         element.tagName.toLowerCase() +
         attrs
-          .map((attr) => `[${attr.name}="${CSS.escape(attr.value)}"]`)
+          .map(
+            (attr) =>
+              `[${attr.name}${attr.name === "class" ? "~" : ""}="${CSS.escape(attr.value)}"]`,
+          )
           .join("");
       const matches = document.querySelectorAll(selector);
       if (matches.length > 1) {
