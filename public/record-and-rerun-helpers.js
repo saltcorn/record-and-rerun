@@ -244,10 +244,17 @@ const RecordAndRerun = (() => {
       let selector =
         element.tagName.toLowerCase() +
         attrs
-          .map(
-            (attr) =>
-              `[${attr.name}${attr.name === "class" ? "~" : ""}="${CSS.escape(attr.value)}"]`,
-          )
+          .map((attr) => {
+            if (attr.name === "class") {
+              const classes = attr.value
+                .split(" ")
+                .filter((cls) => cls.trim().length > 0)
+                .map((cls) => `.${CSS.escape(cls)}`)
+                .join("");
+              return classes;
+            }
+            return `[${attr.name}="${CSS.escape(attr.value)}"]`;
+          })
           .join("");
       const matches = document.querySelectorAll(selector);
       if (matches.length > 1) {
