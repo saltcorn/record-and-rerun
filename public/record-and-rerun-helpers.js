@@ -268,6 +268,7 @@ const RecordAndRerun = (() => {
           selector = `${parentSelector} > ${element.tagName.toLowerCase()}:nth-of-type(${index})`;
         }
       }
+      if (!selector) console.warn("Could not generate selector for element:", element);
       return selector;
     }
   };

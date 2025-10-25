@@ -42,6 +42,10 @@ test.describe("generic Test Suite", () => {
           break;
         }
         case "click": {
+          if (!event.selector) {
+            console.log("No selector provided for click event, skipping.");
+            break;
+          }
           console.log(`Clicking on: ${event.selector}`);
           const element = await page.locator(event.selector);
           await element.click();
@@ -79,6 +83,10 @@ test.describe("generic Test Suite", () => {
           break;
         }
         case "assert_element": {
+          if (!event.selector) {
+            console.log("No selector provided for click event, skipping.");
+            break;
+          }
           console.log(`Asserting element: ${event.selector}`);
           const element = await page.locator(event.selector);
           await expect(element).toBeVisible();
