@@ -55,8 +55,12 @@ test.describe("generic Test Suite", () => {
         case "keydown": {
           console.log(`Typing: ${event.key}`);
           if (event.key) {
-            if (event.key.length > 1) await page.keyboard.press(event.key);
-            else await page.keyboard.type(event.key);
+            if (event.key.length > 1) {
+              await page.keyboard.press(event.key);
+              if (event.key === "Enter") {
+                await page.waitForTimeout(500);
+              }
+            } else await page.keyboard.type(event.key);
           }
           break;
         }
