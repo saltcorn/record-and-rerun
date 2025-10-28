@@ -40,6 +40,9 @@ const RecordAndRerun = (() => {
           // ignore clicks .toast-header
           if (event.target.closest(".toast-header")) return;
 
+          // ignore clicks on the recording bar
+          if (event.target.closest(".recording-bar")) return;
+
           // ignore 'Enter' when followed by a synthetic click
           const element = event.target;
           if (
