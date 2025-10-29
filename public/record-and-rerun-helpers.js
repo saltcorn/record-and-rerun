@@ -8,7 +8,9 @@ const RecordAndRerun = (() => {
       this.api_token = cfg.api_token;
       this.currentUrl = new URL(window.location.href);
       this.inErrorState = false;
-      this.initListeners();
+      this.lastMouseDownEl = null;
+      this.lastWasGenerated = false;
+      if (this.recording) this.initListeners();
     }
 
     checkUpload() {
@@ -30,10 +32,43 @@ const RecordAndRerun = (() => {
         }
       });
 
+      document.addEventListener(
+        "mousedown",
+        (e) => {
+          this.lastMouseDownEl = e.target;
+        },
+        true,
+      );
+
+      const oldFn = window.pjax_to;
+      const that = this;
+      window.pjax_to = function (href, e) {
+        if (that.recording && that.lastMouseDownEl) {
+          const selector = getUniqueSelector(that.lastMouseDownEl);
+          const eventData = {
+            type: "click",
+            selector: selector,
+            timestamp: new Date().toISOString(),
+          };
+          that.lastWasGenerated = true;
+          that.events.push(eventData);
+          persistEvents(that.events);
+        }
+        oldFn.call(this, href, e);
+      };
+
       document.addEventListener("click", async (event) => {
+        const _lastMouseDownEl = this.lastMouseDownEl;
+        this.lastMouseDownEl = null;
+
         const assertMenu = document.querySelector(".custom-menu");
         if (assertMenu) assertMenu.remove();
         if (this.recording) {
+          if (_lastMouseDownEl === event.target && this.lastWasGenerated) {
+            this.lastWasGenerated = false;
+            return;
+          }
+
           // ignore clicks on the custom context menu
           if (event.target.closest(".custom-menu")) return;
 
@@ -72,6 +107,7 @@ const RecordAndRerun = (() => {
       });
 
       document.addEventListener("contextmenu", (event) => {
+        this.lastMouseDownEl = null;
         if (this.recording) {
           event.preventDefault();
           const selected = window.getSelection();
@@ -201,7 +237,9 @@ const RecordAndRerun = (() => {
           this.events = [];
         } else
           throw new Error(
-            `Failed to upload events${this.api_token ? "" : ": No API token configured"}`,
+            `Failed to upload events${
+              this.api_token ? "" : ": No API token configured"
+            }`,
           );
         this.inErrorState = false;
       } catch (error) {
@@ -271,7 +309,8 @@ const RecordAndRerun = (() => {
           selector = `${parentSelector} > ${element.tagName.toLowerCase()}:nth-of-type(${index})`;
         }
       }
-      if (!selector) console.warn("Could not generate selector for element:", element);
+      if (!selector)
+        console.warn("Could not generate selector for element:", element);
       return selector;
     }
   };
