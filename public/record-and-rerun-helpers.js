@@ -190,16 +190,13 @@ const RecordAndRerun = (() => {
     }
 
     async stopRecording() {
-      const persisted = getPersistedEvents();
-      if (persisted?.length > 0) {
-        this.events = persisted;
-        await this.uploadEvents();
-      }
+      this.events = getPersistedEvents();
+      await this.uploadEvents(true);
       this.recording = false;
     }
 
-    async uploadEvents() {
-      if (this.events.length === 0) {
+    async uploadEvents(hasStopped = false) {
+      if (!hasStopped && this.events.length === 0) {
         console.log("No events to upload.");
         return;
       }
@@ -212,6 +209,7 @@ const RecordAndRerun = (() => {
         const body = {
           events: eventsToUpload,
           workflow_id: this.workflow.id,
+          has_stopped: hasStopped,
         };
         let url = null;
         if (this.api_token) {
