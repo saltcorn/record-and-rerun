@@ -3,6 +3,7 @@ const Form = require("@saltcorn/data/models/form");
 const Table = require("@saltcorn/data/models/table");
 const User = require("@saltcorn/data/models/user");
 const Field = require("@saltcorn/data/models/field");
+const Plugin = require("@saltcorn/data/models/plugin");
 const {
   div,
   button,
@@ -14,7 +15,13 @@ const {
   h5,
 } = require("@saltcorn/markup/tags");
 const { getState, features } = require("@saltcorn/data/db/state");
-const { cfgOpts, parseDataField, createTestDirName } = require("./common");
+const db = require("@saltcorn/data/db");
+const {
+  cfgOpts,
+  parseDataField,
+  createTestDirName,
+  removeRecordingId,
+} = require("./common");
 
 const fs = require("fs").promises;
 
@@ -175,6 +182,30 @@ const upload_events = async (
     const { dataTblName, dataField, topFk } = parseDataField(data_field);
     const dataTbl = Table.findOne({ name: dataTblName });
     if (!dataTbl) throw new Error(`Table '${dataTblName}' not found`);
+    const hasStopped = !!body.has_stopped;
+    if (hasStopped) {
+      getState().log(
+        5,
+        `Recording has stopped for workflow id ${body.workflow_id}`,
+      );
+      let plugin = await Plugin.findOne({ name: "record-and-rerun" });
+      if (!plugin) {
+        plugin = await Plugin.findOne({
+          name: "@saltcorn/record-and-rerun",
+        });
+      }
+      if (plugin?.configuration?.active_recording_ids) {
+        plugin.configuration.active_recording_ids =
+          plugin.configuration.active_recording_ids.filter(
+            (id) => id !== body.workflow_id,
+          );
+        await plugin.upsert();
+        getState().processSend({
+          refresh_plugin_cfg: plugin.name,
+          tenant: db.getTenantSchema(),
+        });
+      }
+    }
     for (const event of body.events || []) {
       await dataTbl.insertRow(
         {
@@ -222,6 +253,22 @@ const init_workflow = async (
         if (tokens.length > 0) result.json.api_token = tokens[0].token;
       }
     }
+    let plugin = await Plugin.findOne({ name: "record-and-rerun" });
+    if (!plugin) {
+      plugin = await Plugin.findOne({
+        name: "@saltcorn/record-and-rerun",
+      });
+    }
+    if (!plugin.configuration)
+      plugin.configuration = { active_recording_ids: [id] };
+    else if (!plugin.configuration.active_recording_ids)
+      plugin.configuration.active_recording_ids = [id];
+    else plugin.configuration.active_recording_ids.push(id);
+    await plugin.upsert();
+    getState().processSend({
+      refresh_plugin_cfg: plugin.name,
+      tenant: db.getTenantSchema(),
+    });
     return result;
   } catch (e) {
     getState().log(2, `Error initializing workflow: ${e.message}`);
@@ -236,15 +283,16 @@ const virtual_triggers = (table_id, viewname, { workflow_name_field }) => {
       when_trigger: "Delete",
       table_id: table_id,
       run: async (row) => {
+        const wfId = row[table.pk_name];
         getState().log(
           5,
-          `Deleting rows with a ref to workflow with id '${row[table.pk_name]}'`,
+          `Deleting rows with a ref to workflow with id '${wfId}'`,
         );
         const refFields = await Field.find({ reftable_name: table.name });
         for (const rf of refFields) {
           const refTable = Table.findOne(rf.table_id);
           if (refTable) {
-            await refTable.deleteRows({ [rf.name]: row[table.pk_name] });
+            await refTable.deleteRows({ [rf.name]: wfId });
           }
         }
 
@@ -262,6 +310,8 @@ const virtual_triggers = (table_id, viewname, { workflow_name_field }) => {
         } catch (e) {
           getState().log(2, `Error deleting test directory: ${e.message}`);
         }
+
+        await removeRecordingId(wfId, true);
       },
     },
   ];

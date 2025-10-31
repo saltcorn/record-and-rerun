@@ -277,6 +277,16 @@ const routes = (config) => {
   ];
 };
 
+const onlyIfCallback = () => {
+  const state = getState();
+  if (!state.plugin_cfgs || !state.plugin_cfgs["record-and-rerun"]) return true;
+  else {
+    return (
+      state.plugin_cfgs["record-and-rerun"].active_recording_ids?.length > 0
+    );
+  }
+};
+
 module.exports = {
   plugin_name: "record-and-rerun",
   viewtemplates: () => [require("./record-events")],
@@ -295,11 +305,13 @@ module.exports = {
       }/record-and-rerun-helpers.js`,
     },
     {
+      only_if: onlyIfCallback,
       css: `/plugins/public/record-and-rerun@${
         require("./package.json").version
       }/record-and-rerun.css`,
     },
     {
+      only_if: onlyIfCallback,
       headerTag: script(
         domReady(`
   const { recording, workflowName } = RecordAndRerun.getCfg();

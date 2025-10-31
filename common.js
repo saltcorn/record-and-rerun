@@ -5,6 +5,7 @@ const Table = require("@saltcorn/data/models/table");
 const View = require("@saltcorn/data/models/view");
 const File = require("@saltcorn/data/models/file");
 const Field = require("@saltcorn/data/models/field");
+const Plugin = require("@saltcorn/data/models/plugin");
 const db = require("@saltcorn/data/db");
 const { getState } = require("@saltcorn/data/db/state");
 
@@ -273,6 +274,30 @@ const calcStats = (allRunStats) => {
   }
 
   return result;
+};
+
+/*
+ * If the plugin configuration still has an active recording ID, remove it
+ */
+const removeRecordingId = async (id, reload = false) => {
+  let plugin = await Plugin.findOne({ name: "record-and-rerun" });
+  if (!plugin) {
+    plugin = await Plugin.findOne({
+      name: "@saltcorn/record-and-rerun",
+    });
+  }
+
+  if (plugin?.configuration?.active_recording_ids?.includes(id)) {
+    plugin.configuration.active_recording_ids =
+      plugin.configuration.active_recording_ids.filter((rid) => rid !== id);
+    await plugin.upsert();
+    if (reload) {
+      getState().processSend({
+        refresh_plugin_cfg: plugin.name,
+        tenant: db.getTenantSchema(),
+      });
+    }
+  }
 };
 
 const getTablesIfExists = async () => {
@@ -848,6 +873,7 @@ module.exports = {
   runPlaywrightScript,
   copyHtmlReport,
   calcStats,
+  removeRecordingId,
   readBenchmarkFiles,
   insertWfRunRow,
   createTables,
