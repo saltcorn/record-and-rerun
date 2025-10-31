@@ -1,4 +1,9 @@
-const { cfgOpts, parseRelation, insertWfRunRow } = require("./common");
+const {
+  cfgOpts,
+  parseRelation,
+  insertWfRunRow,
+  removeRecordingId,
+} = require("./common");
 const { RerunHelper } = require("./rerun-helper");
 const Table = require("@saltcorn/data/models/table");
 const Trigger = require("@saltcorn/data/models/trigger");
@@ -81,13 +86,15 @@ module.exports = {
     description: "Rerun a recorded user workflow",
     configFields: async ({ table }) => await rerunCfgFields(table),
     run: async ({ table, row, configuration, req }) => {
+      const wfId = row[table.pk_name || "id"];
       let wfRunId = null;
       let wfRunRel = null;
       if (configuration.workflow_run_relation) {
         wfRunRel = parseRelation(configuration.workflow_run_relation);
-        wfRunId = await insertWfRunRow(row[table.pk_name || "id"], wfRunRel);
+        wfRunId = await insertWfRunRow(wfId, wfRunRel);
         if (typeof wfRunId === "string") throw new Error(wfRunId);
       }
+      await removeRecordingId(wfId);
       const helper = new RerunHelper(table, row, wfRunRel, configuration);
       const success = await helper.rerun(wfRunId);
       const msg = `Workflow re-run completed: ${
@@ -160,12 +167,12 @@ module.exports = {
       });
       const failedWorkflows = [];
       for (const row of workflows) {
+        const wfId = row[table.pk_name || "id"];
         const wfName = row[workflow_name_field];
+        await removeRecordingId(wfId);
         getState().log(5, `Rerunning workflow ${wfName}`);
         const runHelper = new RerunHelper(wfTbl, row, wfRunRel, configuration);
-        const wfRunId = wfRunRel
-          ? await insertWfRunRow(row[wfTbl.pk_name || "id"], wfRunRel)
-          : null;
+        const wfRunId = wfRunRel ? await insertWfRunRow(wfId, wfRunRel) : null;
         if (typeof wfRunId === "string") {
           failedWorkflows.push(wfName);
           getState().log(2, `Error inserting workflow_run row: ${wfRunId}`);
@@ -263,12 +270,11 @@ module.exports = {
       ];
     },
     run: async ({ table, row, configuration, req }) => {
+      const wfId = row[table.pk_name || "id"];
       const wfRunRel = parseRelation(configuration.workflow_run_relation);
-      const wfRunId = await insertWfRunRow(
-        row[table.pk_name || "id"],
-        wfRunRel,
-      );
+      const wfRunId = await insertWfRunRow(wfId, wfRunRel);
       if (typeof wfRunId === "string") throw new Error(wfRunId);
+      await removeRecordingId(wfId);
       const helper = new RerunHelper(table, row, wfRunRel, configuration);
       const success = await helper.rerun(wfRunId);
       const msg = `Workflow benchmark completed: ${

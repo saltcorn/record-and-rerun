@@ -16,7 +16,12 @@ const {
 } = require("@saltcorn/markup/tags");
 const { getState, features } = require("@saltcorn/data/db/state");
 const db = require("@saltcorn/data/db");
-const { cfgOpts, parseDataField, createTestDirName } = require("./common");
+const {
+  cfgOpts,
+  parseDataField,
+  createTestDirName,
+  removeRecordingId,
+} = require("./common");
 
 const fs = require("fs").promises;
 
@@ -278,15 +283,16 @@ const virtual_triggers = (table_id, viewname, { workflow_name_field }) => {
       when_trigger: "Delete",
       table_id: table_id,
       run: async (row) => {
+        const wfId = row[table.pk_name];
         getState().log(
           5,
-          `Deleting rows with a ref to workflow with id '${row[table.pk_name]}'`,
+          `Deleting rows with a ref to workflow with id '${wfId}'`,
         );
         const refFields = await Field.find({ reftable_name: table.name });
         for (const rf of refFields) {
           const refTable = Table.findOne(rf.table_id);
           if (refTable) {
-            await refTable.deleteRows({ [rf.name]: row[table.pk_name] });
+            await refTable.deleteRows({ [rf.name]: wfId });
           }
         }
 
@@ -304,6 +310,8 @@ const virtual_triggers = (table_id, viewname, { workflow_name_field }) => {
         } catch (e) {
           getState().log(2, `Error deleting test directory: ${e.message}`);
         }
+
+        await removeRecordingId(wfId, true);
       },
     },
   ];
