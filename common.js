@@ -128,22 +128,48 @@ const preparePlaywrightDir = async (testDir, workflowName, events) => {
   }
 };
 
+const prepMobileEnvParams = (user) => {
+  const builderSettings = getState().getConfig("mobile_builder_settings") || {};
+  return {
+    ENTRY_POINT: builderSettings.entryPoint,
+    ENTRY_POINT_TYPE: builderSettings.entryPointType,
+    SERVER_PATH: "http://localhost:3000", //builderSettings.serverURL,
+    INCLUDED_PLUGINS: (builderSettings.includedPlugins || []).join(" "),
+    USER: user.email,
+  };
+};
+
 /**
  * run the playwright script in the test directory
  * @param {string} testDir
  * @param {number} numIterations
  * @param {boolean} isBenchmark
+ * @param {string} workflowType Web or Mobile
  */
-const runPlaywrightScript = async (testDir, numIterations, isBenchmark) => {
-  const child = spawn(path.join(testDir, "run.sh"), {
-    cwd: testDir,
-    stdio: ["ignore", "pipe", "pipe"], // capture stdout/stderr
-    env: {
-      ...process.env,
-      NUM_ITERATIONS: isBenchmark ? String(numIterations) : "1",
-      DO_BENCHMARK: isBenchmark ? true : false,
+const runPlaywrightScript = async (
+  testDir,
+  numIterations,
+  isBenchmark,
+  workflowType,
+  user,
+) => {
+  const child = spawn(
+    path.join(
+      testDir,
+      `run_${workflowType === "Mobile" ? "mobile" : "web"}.bash`,
+    ),
+    {
+      cwd: testDir,
+      stdio: ["ignore", "pipe", "pipe"], // capture stdout/stderr
+      env: {
+        ...process.env,
+        NUM_ITERATIONS: isBenchmark ? String(numIterations) : "1",
+        DO_BENCHMARK: isBenchmark ? true : false,
+        SCRIPT_DIR: testDir,
+        ...(workflowType === "Mobile" ? prepMobileEnvParams(user) : {}),
+      },
     },
-  });
+  );
   await new Promise((resolve, reject) => {
     const state = getState();
     child.on("exit", async (code) => {

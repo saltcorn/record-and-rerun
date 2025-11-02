@@ -357,4 +357,5 @@ module.exports = {
   ],
   configuration_workflow,
   routes,
+  ready_for_mobile: true,
 };
