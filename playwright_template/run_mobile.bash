@@ -3,22 +3,20 @@ set -e
 
 
 INCLUDED_PLUGINS=($INCLUDED_PLUGINS)
-echo "### Environment Variables ###"
-echo $ENTRY_POINT
-echo $ENTRY_POINT_TYPE
-echo $USER
-echo $SERVER_PATH
-echo $INCLUDED_PLUGINS
-echo $USER
-echo $SCRIPT_DIR
-
+echo "entry point: $ENTRY_POINT"
+echo "entry point type: $ENTRY_POINT_TYPE"
+echo "user: $USER"
+echo "server path: $SERVER_PATH"
+echo "included plugins: $INCLUDED_PLUGINS"
+echo "user: $USER"
+echo "path to sc command: $SALTCORN_COMMAND"
+echo "script dir: $SCRIPT_DIR"
 
 cd $SCRIPT_DIR
 
 BUILD_DIR=/tmp/saltcorn_build
 
-PATH=../../packages/saltcorn-cli/bin/:$PATH
-saltcorn build-app \
+"$SALTCORN_COMMAND" build-app \
   -p web \
   -e "$ENTRY_POINT" \
   -t "$ENTRY_POINT_TYPE" \

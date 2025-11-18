@@ -8,6 +8,7 @@ const Field = require("@saltcorn/data/models/field");
 const Plugin = require("@saltcorn/data/models/plugin");
 const db = require("@saltcorn/data/db");
 const { getState } = require("@saltcorn/data/db/state");
+const { getSafeSaltcornCmd } = require("@saltcorn/data/utils");
 
 const path = require("path");
 const fs = require("fs").promises;
@@ -133,9 +134,10 @@ const prepMobileEnvParams = (user) => {
   return {
     ENTRY_POINT: builderSettings.entryPoint,
     ENTRY_POINT_TYPE: builderSettings.entryPointType,
-    SERVER_PATH: "http://localhost:3000", //builderSettings.serverURL,
+    SERVER_PATH: "http://localhost:3010",
     INCLUDED_PLUGINS: (builderSettings.includedPlugins || []).join(" "),
     USER: user.email,
+    SALTCORN_COMMAND: getSafeSaltcornCmd(),
   };
 };
 
@@ -371,6 +373,13 @@ const createTables = async () => {
     type: "String",
     required: true,
   });
+  await Field.create({ // web or mobile
+    table: sessions,
+    name: "recording_type",
+    label: "Recording Type",
+    type: "String",
+    required: false,
+  });
 
   // events table
   const sessionEvents = await Table.create("session_events", {
@@ -496,6 +505,7 @@ const createViews = async (
         data_field: "session_events.event_data->session_recording",
         workflow_name_field: "name",
         confirm_start_recording: true,
+        workflow_type_field: "recording_type",
       },
       min_role: 1,
     });
@@ -600,6 +610,7 @@ const createViews = async (
                   html_report_file: "html_report",
                   success_flag_field: "success",
                   workflow_name_field: "name",
+                  workflow_type_field: "recording_type",
                   html_report_directory: "",
                   workflow_run_relation: "session_runs.session_recording",
                 },
@@ -629,6 +640,7 @@ const createViews = async (
                   num_iterations: 5,
                   success_flag_field: "success",
                   workflow_name_field: "name",
+                  workflow_type_field: "recording_type",
                   benchmark_data_field: "benchmark_results",
                   workflow_run_relation: "session_runs.session_recording",
                 },
@@ -668,6 +680,7 @@ const createViews = async (
               html_report_file: "html_report",
               success_flag_field: "success",
               workflow_name_field: "name",
+              workflow_type_field: "recording_type",
               html_report_directory: "",
               workflow_run_relation: "session_runs.session_recording",
             },
@@ -699,6 +712,7 @@ const createViews = async (
               num_iterations: 5,
               success_flag_field: "success",
               workflow_name_field: "name",
+              workflow_type_field: "recording_type",
               benchmark_data_field: "benchmark_results",
               workflow_run_relation: "session_runs.session_recording",
             },

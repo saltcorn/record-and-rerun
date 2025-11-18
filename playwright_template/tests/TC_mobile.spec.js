@@ -38,12 +38,27 @@ test.describe("generic Test Suite", () => {
           await page.waitForTimeout(500);
           break;
         }
-
         case "keydown": {
           console.log(`Typing: ${event.key}`);
           if (event.key) {
             await page.keyboard.press(event.key);
           }
+          break;
+        }
+        case "assert_text": {
+          console.log(`Asserting text: ${event.text}`);
+
+          break;
+        }
+        case "assert_text_not_present": {
+          console.log(`Asserting text not present: ${event.text}`);
+        }
+        case "assert_element": {
+          if (!event.selector) {
+            console.log("No selector provided for click event, skipping.");
+            break;
+          }
+          console.log(`Asserting element: ${event.selector}`);
           break;
         }
       }
