@@ -2,6 +2,8 @@ const { test, expect } = require("@playwright/test");
 
 const { readEventsJSON, dumpMobileHTML } = require("../test-helpers");
 
+const serverPath = process.env.TEST_SERVER || "http://localhost:3010";
+
 test.describe("generic Test Suite", () => {
   let testData = null;
   let context;
@@ -14,7 +16,7 @@ test.describe("generic Test Suite", () => {
     });
     page = await context.newPage();
     await page.setViewportSize({ width: 1350, height: 720 });
-    await page.goto("http://localhost:3010/mobile_test_build/index.html");
+    await page.goto(`${serverPath}/mobile_test_build/index.html`);
   });
 
   test.afterAll(async () => {

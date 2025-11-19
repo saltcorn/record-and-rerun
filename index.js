@@ -25,6 +25,7 @@ const configuration_workflow = () =>
         const schema = (await getTablesIfExists()) || (await createTables());
         const views = await getExistingViews(schema);
         await createViews(schema, views);
+        await getState().refresh(false);
       }
       return {
         context,

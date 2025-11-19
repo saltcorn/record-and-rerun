@@ -51,7 +51,7 @@ const RecordAndRerun = (() => {
                 changeType = "delete";
                 changeValue = oldValue.slice(newValue.length);
               }
-              if (change) {
+              if (changeValue) {
                 this.events.push({
                   type: "keydown",
                   selector: getUniqueSelector(e.target),

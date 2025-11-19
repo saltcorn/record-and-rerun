@@ -12,6 +12,14 @@ echo "user: $USER"
 echo "path to sc command: $SALTCORN_COMMAND"
 echo "script dir: $SCRIPT_DIR"
 
+# check if server path ends with a port and extract it
+PORT=3010
+port_regex=":([0-9]+)$"
+if [[ $SERVER_PATH =~ $port_regex ]]; then
+  PORT="${BASH_REMATCH[1]}"
+  echo "Extracted port: $PORT"
+fi
+
 cd $SCRIPT_DIR
 
 BUILD_DIR=/tmp/saltcorn_build
@@ -31,13 +39,13 @@ if [ -f $BUILD_DIR/www/data/tables.json ]; then
 fi
 
 echo Starting background Saltcorn server...
-SALTCORN_SERVE_MOBILE_TEST_BUILD=/tmp/saltcorn_build/www saltcorn serve -p 3010 &
+SALTCORN_SERVE_MOBILE_TEST_BUILD=/tmp/saltcorn_build/www saltcorn serve -p $PORT &
 
 SCPID=$!
 trap "kill $SCPID" EXIT
 
-while ! nc -z localhost 3010; do
+while ! nc -z localhost $PORT; do
   sleep 0.2
 done
 
-npx playwright test ./tests/TC_mobile.spec.js
+TEST_SERVER="$SERVER_PATH" npx playwright test ./tests/TC_mobile.spec.js
