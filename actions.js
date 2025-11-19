@@ -26,9 +26,21 @@ const rerunCfgFields = async (table) => {
       type: "String",
       required: true,
       attributes: {
-        options: nameOpts.map((f) => f.name).join(),
+        options: nameOpts.map((f) => f.name),
       },
       required: true,
+    },
+    {
+      name: "workflow_type_field",
+      label: "Session Type Field",
+      sublabel:
+        "Optional Field to store if you're recording a web or mobile session. The default is 'Web' " +
+        "and you can leave this empty if you have no mobile sessions.",
+      default: "Web",
+      type: "String",
+      attributes: {
+        options: nameOpts.map((f) => f.name),
+      },
     },
     {
       name: "data_field",
@@ -37,7 +49,7 @@ const rerunCfgFields = async (table) => {
         "JSON Field to store recorded events (format table_with_data.json_field->key_to_top_table)",
       type: "String",
       attributes: {
-        options: dataOpts.map((f) => f).join(),
+        options: dataOpts.map((f) => f),
       },
       required: true,
     },
@@ -95,7 +107,13 @@ module.exports = {
         if (typeof wfRunId === "string") throw new Error(wfRunId);
       }
       await removeRecordingId(wfId);
-      const helper = new RerunHelper(table, row, wfRunRel, configuration);
+      const helper = new RerunHelper(
+        table,
+        row,
+        wfRunRel,
+        configuration,
+        req.user,
+      );
       const success = await helper.rerun(wfRunId);
       const msg = `Workflow re-run completed: ${
         success ? "success" : "failed"
@@ -225,6 +243,18 @@ module.exports = {
             options: nameOpts,
           },
           required: true,
+        },
+        {
+          name: "workflow_type_field",
+          label: "Session Type Field",
+          sublabel:
+            "Optional Field to store if you're recording a web or mobile session. The default is 'Web' " +
+            "and you can leave this empty if you have no mobile sessions.",
+          default: "Web",
+          type: "String",
+          attributes: {
+            options: nameOpts.map((f) => f.name),
+          },
         },
         {
           name: "data_field",

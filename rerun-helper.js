@@ -22,12 +22,14 @@ class RerunHelper {
     {
       num_iterations,
       workflow_name_field,
+      workflow_type_field,
       data_field,
       success_flag_field,
       benchmark_data_field,
       html_report_file,
       html_report_directory,
     },
+    user,
   ) {
     this.wfTable = wfTable;
     this.wfRow = wfRow;
@@ -39,11 +41,15 @@ class RerunHelper {
       /[^a-zA-Z0-9_-]/g,
       "_",
     );
+    if (workflow_type_field && wfRow[workflow_type_field])
+      this.workflowType = wfRow[workflow_type_field];
+    else this.workflowType = "Web";
     this.testDir = createTestDirName(this.workflowName);
     if (this.isBenchmark) this.benchDataField = benchmark_data_field;
     this.htmlReportFile = html_report_file;
     this.successFlagField = success_flag_field;
     this.htmlReportDir = html_report_directory || "/";
+    this.user = user;
   }
 
   async rerun(wfRunId) {
@@ -63,6 +69,8 @@ class RerunHelper {
         this.testDir,
         this.numIterations,
         this.isBenchmark,
+        this.workflowType,
+        this.user,
       );
 
       if (wfRunRow) {

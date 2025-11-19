@@ -156,6 +156,18 @@ const configuration_workflow = (cfg) =>
                 },
               },
               {
+                name: "workflow_type_field",
+                label: "Session Type Field",
+                sublabel:
+                  "Optional Field to store if you're recording a web or mobile session. The default is 'Web' " +
+                  "and you can leave this empty if you have no mobile sessions.",
+                default: "Web",
+                type: "String",
+                attributes: {
+                  options: nameOpts.map((f) => f.name),
+                },
+              },
+              {
                 name: "confirm_start_recording",
                 label: "Confirm before starting recording",
                 sublabel:
@@ -225,7 +237,7 @@ const upload_events = async (
 const init_workflow = async (
   table_id,
   viewname,
-  { workflow_name_field },
+  { workflow_name_field, workflow_type_field },
   body,
   { req },
 ) => {
@@ -233,12 +245,13 @@ const init_workflow = async (
     getState().log(5, `Initializing workflow ${body.workflow_name}`);
     const table = Table.findOne(table_id);
     if (!table) throw new Error(`Table with id '${table_id}' not found`);
-    const id = await table.insertRow(
-      {
-        [workflow_name_field]: body.workflow_name,
-      },
-      req.user,
-    );
+    const row = {
+      [workflow_name_field]: body.workflow_name,
+    };
+    if (workflow_type_field) {
+      row[workflow_type_field] = body.workflow_type || "Web";
+    }
+    const id = await table.insertRow(row, req.user);
     const result = {
       json: {
         success: "ok",

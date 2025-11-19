@@ -1,4 +1,5 @@
 const RecordAndRerun = (() => {
+  const isNode = typeof parent.saltcorn?.mobileApp === "undefined";
   class Recorder {
     constructor(cfg) {
       this.events = cfg.events || [];
@@ -20,17 +21,51 @@ const RecordAndRerun = (() => {
     }
 
     initListeners() {
-      document.addEventListener("keydown", (e) => {
-        if (this.recording) {
-          this.events.push({
-            type: "keydown",
-            key: e.key,
-            code: e.code,
-            timestamp: new Date().toISOString(),
+      if (isNode) {
+        document.addEventListener("keydown", (e) => {
+          if (this.recording) {
+            this.events.push({
+              type: "keydown",
+              key: e.key,
+              code: e.code,
+              timestamp: new Date().toISOString(),
+            });
+            persistEvents(this.events);
+          }
+        });
+      } else {
+        // trackging keystrokes seems not to be permitted on mobile
+        // add onChangeListener to all input and textarea elements and handle changes as keystrokes
+        const elements = document.querySelectorAll("input, textarea");
+        for (const element of elements) {
+          element.setAttribute("_sc_old-value_", element.value);
+          element.addEventListener("input", (e) => {
+            if (this.recording) {
+              const newValue = e.target.value;
+              const oldValue = e.target.getAttribute("_sc_old-value_") || "";
+              let changeType, changeValue;
+              if (newValue.length > oldValue.length) {
+                changeType = "insert";
+                changeValue = newValue.slice(oldValue.length);
+              } else if (newValue.length < oldValue.length) {
+                changeType = "delete";
+                changeValue = oldValue.slice(newValue.length);
+              }
+              if (changeValue) {
+                this.events.push({
+                  type: "keydown",
+                  selector: getUniqueSelector(e.target),
+                  key: changeType === "delete" ? "Backspace" : changeValue,
+                  code: changeType === "delete" ? "Backspace" : changeValue,
+                  timestamp: new Date().toISOString(),
+                });
+                persistEvents(this.events);
+              }
+              element.setAttribute("_sc_old-value_", newValue);
+            }
           });
-          persistEvents(this.events);
         }
-      });
+      }
 
       document.addEventListener(
         "mousedown",
@@ -178,15 +213,17 @@ const RecordAndRerun = (() => {
 
     async startRecording() {
       this.recording = true;
-      this.events.push({
-        type: "page_info",
-        url: window.location.href,
-        width: window.innerWidth,
-        height: window.innerHeight,
-        timestamp: new Date().toISOString(),
-      });
-      persistEvents(this.events);
-      if (this.checkUpload()) await this.uploadEvents();
+      if (isNode) {
+        this.events.push({
+          type: "page_info",
+          url: window.location.href,
+          width: window.innerWidth,
+          height: window.innerHeight,
+          timestamp: new Date().toISOString(),
+        });
+        persistEvents(this.events);
+        if (this.checkUpload()) await this.uploadEvents();
+      }
     }
 
     async stopRecording() {
@@ -218,27 +255,38 @@ const RecordAndRerun = (() => {
         } else {
           url = `/view/${this.viewname}/upload_events`;
         }
-        const response = await fetch(url, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "CSRF-Token": _sc_globalCsrf,
-            "X-Requested-With": "XMLHttpRequest",
-          },
-          body: JSON.stringify(body),
-        });
-        // okay for /scapi, not redirect for /view
-        if (response.ok && !response.redirected) {
-          const result = await response.json();
-          if (result.error) throw new Error(result.error);
+        if (isNode) {
+          const response = await fetch(url, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "CSRF-Token": _sc_globalCsrf,
+              "X-Requested-With": "XMLHttpRequest",
+            },
+            body: JSON.stringify(body),
+          });
+          // okay for /scapi, not redirect for /view
+          if (response.ok && !response.redirected) {
+            const result = await response.json();
+            if (result.error) throw new Error(result.error);
+            console.log("Events uploaded successfully.");
+            this.events = [];
+          } else
+            throw new Error(
+              `Failed to upload events${
+                this.api_token ? "" : ": No API token configured"
+              }`,
+            );
+        } else {
+          const response = await parent.saltcorn.mobileApp.api.apiCall({
+            method: "POST",
+            path: url,
+            body: body,
+          });
+          if (response.error) throw new Error(response.error);
           console.log("Events uploaded successfully.");
           this.events = [];
-        } else
-          throw new Error(
-            `Failed to upload events${
-              this.api_token ? "" : ": No API token configured"
-            }`,
-          );
+        }
         this.inErrorState = false;
       } catch (error) {
         console.error("Error uploading events:", error);
@@ -315,18 +363,33 @@ const RecordAndRerun = (() => {
 
   const initWorkflow = async (viewname, workflowName) => {
     try {
-      const response = await fetch(`/view/${viewname}/init_workflow`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "CSRF-Token": _sc_globalCsrf,
-          "X-Requested-With": "XMLHttpRequest",
-        },
-        body: JSON.stringify({
-          workflow_name: workflowName,
-        }),
-      });
-      const result = await response.json();
+      let result = null;
+      const path = `/view/${viewname}/init_workflow`;
+      if (isNode) {
+        const response = await fetch(path, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "CSRF-Token": _sc_globalCsrf,
+            "X-Requested-With": "XMLHttpRequest",
+          },
+          body: JSON.stringify({
+            workflow_name: workflowName,
+            workflow_type: "Web",
+          }),
+        });
+        result = await response.json();
+      } else {
+        const response = await parent.saltcorn.mobileApp.api.apiCall({
+          method: "POST",
+          path,
+          body: {
+            workflow_name: workflowName,
+            workflow_type: "Mobile",
+          },
+        });
+        result = response.data;
+      }
       console.log("Init workflow response:", result);
       return { workflow: result.created, api_token: result.api_token };
     } catch (error) {
@@ -337,20 +400,24 @@ const RecordAndRerun = (() => {
       });
     }
   };
-  const startFromPublic = async (viewname, workflow) => {
+  const startFromPublic = async () => {
     try {
-      // call /auth/logout
-      const response = await fetch("/auth/logout", {
-        method: "GET",
-        headers: {
-          "Content-Type": "application/json",
-          "CSRF-Token": _sc_globalCsrf,
-          "X-Requested-With": "XMLHttpRequest",
-        },
-      });
-      if (!response.ok) throw new Error("Failed to logout");
-      // redirect to home page
-      window.location.href = window.location.origin;
+      if (isNode) {
+        // call /auth/logout
+        const response = await fetch("/auth/logout", {
+          method: "GET",
+          headers: {
+            "Content-Type": "application/json",
+            "CSRF-Token": _sc_globalCsrf,
+            "X-Requested-With": "XMLHttpRequest",
+          },
+        });
+        if (!response.ok) throw new Error("Failed to logout");
+        // redirect to home page
+        window.location.href = window.location.origin;
+      } else {
+        await parent.saltcorn.mobileApp.auth.logout();
+      }
       return true;
     } catch (error) {
       console.error("Error starting from public:", error);
