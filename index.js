@@ -140,29 +140,6 @@ const writeInstallError = async (plugin, errorMsg) => {
   });
 };
 
-const playwrightDepsInstaller = async (plugin) => {
-  getState().log(5, "Starting Playwright dependencies installation");
-  const child = spawn("npm", ["exec", "playwright", "install-deps"], {
-    stdio: "inherit",
-    cwd: __dirname,
-  });
-  return new Promise((resolve, reject) => {
-    child.on("close", async (code) => {
-      if (code === 0) {
-        getState().log(5, "Playwright dependencies installation completed");
-        resolve();
-      } else {
-        await writeInstallError(plugin, err.message);
-        reject(new Error(`playwright install-deps failed with code ${code}`));
-      }
-    });
-    child.on("error", async (err) => {
-      await writeInstallError(plugin, err.message);
-      reject(err);
-    });
-  });
-};
-
 const playwrightInstaller = async (plugin) => {
   getState().log(5, "Starting Playwright installation");
   const child = spawn("npm", ["exec", "playwright", "install"], {
@@ -226,14 +203,7 @@ const routes = (config) => {
               name: "@saltcorn/record-and-rerun",
             });
           }
-          playwrightDepsInstaller(plugin)
-            .then(() => {
-              playwrightInstaller(plugin);
-            })
-            .catch((err) => {
-              getState().log(2, "Unable to install Playwright dependencies: ");
-            });
-
+          playwrightInstaller(plugin);
           res.json({ notify: "Playwright installation started." });
         } catch (e) {
           const msg = `Error starting Playwright installation: ${e.message}`;
