@@ -1,7 +1,20 @@
 # record-and-rerun
 This plugin allows you to record user interactions (navigations, clicks and keypresses) on a page, store them in the database and rerun them later using the playwright framework. This way you can easily create automated tests (*or benchmarks*) based on real user interactions.
+## System requirements
+This plugin requires **Playwright** on your server.  
+Playwright needs several system libraries that must be installed with `sudo`.
+
+While configuring the plugin, you will see a button *Install Playwright*, but this only works if all dependencies are fulfilled. 
+You can ensure this by running:
+
+    sudo npx playwright install-deps
+
+and click the button. Or alternatively, install everything on your own:
+
+    sudo npx playwright install-deps
+    npx playwright install
 ## Plugin configuration
-The configuration has an option to set up the standard Tables, Views and Actions to get started quickly. 
+In the plugin configuration you have an option to set up the standard Tables, Views and Actions. 
 ### Database schema
 The table-schema looks like this:
 
