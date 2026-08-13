@@ -112,12 +112,17 @@ module.exports = {
         row,
         wfRunRel,
         configuration,
-        req.user,
+        req.user
       );
       const success = await helper.rerun(wfRunId);
-      const msg = `Workflow re-run completed: ${
-        success ? "success" : "failed"
-      }`;
+      if (!success) {
+        const msg = `Workflow re-run failed: ${
+          helper.lastError || "unknown error"
+        }`;
+        getState().log(5, msg);
+        return { error: msg };
+      }
+      const msg = "Workflow re-run completed: success";
       getState().log(5, msg);
       return {
         notify: msg,
@@ -134,7 +139,7 @@ module.exports = {
       let workflowNameField = old_config?.workflow_name_field;
       if (!workflowNameField) {
         const firstStringField = table.fields.find(
-          (f) => f.type.name === "String",
+          (f) => f.type.name === "String"
         );
         workflowNameField = firstStringField
           ? firstStringField.name
@@ -167,7 +172,7 @@ module.exports = {
     run: async ({ configuration, trigger_id }) => {
       getState().log(
         5,
-        `Starting rerun of multiple workflows with trigger_id: '${trigger_id}'`,
+        `Starting rerun of multiple workflows with trigger_id: '${trigger_id}'`
       );
       const trigger = Trigger.findOne(trigger_id);
       const wfTbl = Table.findOne(trigger?.table_id);
@@ -200,7 +205,7 @@ module.exports = {
         const success = await runHelper.rerun(wfRunId);
         getState().log(
           5,
-          `Rerun of workflow ${wfName} completed with status ${success}`,
+          `Rerun of workflow ${wfName} completed with status ${success}`
         );
         if (!success) failedWorkflows.push(wfName);
       }
@@ -305,11 +310,22 @@ module.exports = {
       const wfRunId = await insertWfRunRow(wfId, wfRunRel);
       if (typeof wfRunId === "string") throw new Error(wfRunId);
       await removeRecordingId(wfId);
-      const helper = new RerunHelper(table, row, wfRunRel, configuration);
+      const helper = new RerunHelper(
+        table,
+        row,
+        wfRunRel,
+        configuration,
+        req.user
+      );
       const success = await helper.rerun(wfRunId);
-      const msg = `Workflow benchmark completed: ${
-        success ? "success" : "failed"
-      }`;
+      if (!success) {
+        const msg = `Workflow benchmark failed: ${
+          helper.lastError || "unknown error"
+        }`;
+        getState().log(5, msg);
+        return { error: msg };
+      }
+      const msg = "Workflow benchmark completed: success";
       getState().log(5, msg);
       return {
         notify: msg,

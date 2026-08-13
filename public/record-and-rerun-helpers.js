@@ -11,13 +11,39 @@ const RecordAndRerun = (() => {
       this.inErrorState = false;
       this.lastMouseDownEl = null;
       this.lastWasGenerated = false;
+      this.lastClickedEl = null;
+      this.lastSelectedText = "";
+      this.inputBaselines = new WeakMap();
+      this.uploadTimer = null;
       if (this.recording) this.initListeners();
     }
 
     checkUpload() {
-      if (this.currentUrl.pathname === "/auth/login" && !this.api_token)
+      // the token-authenticated /scapi route still redirects to
+      // /auth/login while logged out, so an api_token doesn't help here -
+      // never upload until there's a session again
+      if (!isNode) {
+        // mobile's login page doesn't change window.location, so ask the
+        // app directly whether we have a session instead
+        const hasSession =
+          parent.saltcorn?.data?.state?.getState?.()?.mobileConfig?.hasSession;
+        if (hasSession === false) return false;
+      } else if (this.currentUrl.pathname === "/auth/login") {
         return false;
-      else return this.events.length >= 5;
+      }
+      return this.events.length >= 5;
+    }
+
+    // debounced so an upload doesn't fire on the same tick as a click that
+    // also triggers app navigation - on mobile, both go through Capacitor's
+    // native HTTP layer, and racing requests there can drop the session
+    // cookie on one of them
+    scheduleUpload() {
+      if (this.uploadTimer) clearTimeout(this.uploadTimer);
+      this.uploadTimer = setTimeout(() => {
+        this.uploadTimer = null;
+        this.uploadEvents();
+      }, 1000);
     }
 
     initListeners() {
@@ -34,45 +60,83 @@ const RecordAndRerun = (() => {
           }
         });
       } else {
-        // trackging keystrokes seems not to be permitted on mobile
-        // add onChangeListener to all input and textarea elements and handle changes as keystrokes
-        const elements = document.querySelectorAll("input, textarea");
-        for (const element of elements) {
-          element.setAttribute("_sc_old-value_", element.value);
-          element.addEventListener("input", (e) => {
-            if (this.recording) {
-              const newValue = e.target.value;
-              const oldValue = e.target.getAttribute("_sc_old-value_") || "";
-              let changeType, changeValue;
-              if (newValue.length > oldValue.length) {
-                changeType = "insert";
-                changeValue = newValue.slice(oldValue.length);
-              } else if (newValue.length < oldValue.length) {
-                changeType = "delete";
-                changeValue = oldValue.slice(newValue.length);
-              }
-              if (changeValue) {
-                this.events.push({
-                  type: "keydown",
-                  selector: getUniqueSelector(e.target),
-                  key: changeType === "delete" ? "Backspace" : changeValue,
-                  code: changeType === "delete" ? "Backspace" : changeValue,
-                  timestamp: new Date().toISOString(),
-                });
-                persistEvents(this.events);
-              }
-              element.setAttribute("_sc_old-value_", newValue);
+        // mobile can't track keystrokes, so watch "input" on fields instead,
+        // delegated on document so fields added later are picked up too
+        document.addEventListener(
+          "focusin",
+          (e) => {
+            if (this.recording && e.target?.matches?.("input, textarea")) {
+              // baseline is the value at the moment the field is focused,
+              // so pre-filled/default values aren't misread as user input
+              this.inputBaselines.set(e.target, e.target.value);
             }
-          });
-        }
+          },
+          true
+        );
+        document.addEventListener("input", (e) => {
+          const target = e.target;
+          if (!this.recording || !target?.matches?.("input, textarea")) return;
+          const newValue = target.value;
+          const oldValue = this.inputBaselines.has(target)
+            ? this.inputBaselines.get(target)
+            : "";
+          const { removed, inserted } = diffValues(oldValue, newValue);
+          if (removed || inserted) {
+            const selector = getUniqueSelector(target);
+            const timestamp = new Date().toISOString();
+            // split into delete/insert so edits mid-word (e.g. autocorrect)
+            // and multi-character deletes replay accurately
+            if (removed) {
+              this.events.push({
+                type: "keydown",
+                selector,
+                key: "Backspace",
+                count: removed.length,
+                timestamp,
+              });
+            }
+            if (inserted) {
+              this.events.push({
+                type: "keydown",
+                selector,
+                key: inserted,
+                code: inserted,
+                timestamp,
+              });
+            }
+            persistEvents(this.events);
+          }
+          this.inputBaselines.set(target, newValue);
+        });
+        // track selected text for the mobile assert-menu, since long-press
+        // selection doesn't reliably trigger a "contextmenu" on mobile
+        document.addEventListener("selectionchange", () => {
+          if (this.recording) {
+            const selected = window.getSelection();
+            this.lastSelectedText = selected ? selected.toString() : "";
+          }
+        });
       }
+
+      document.addEventListener("change", (e) => {
+        if (this.recording && e.target?.tagName === "SELECT") {
+          this.events.push({
+            type: "select",
+            selector: getUniqueSelector(e.target),
+            value: e.target.value,
+            timestamp: new Date().toISOString(),
+          });
+          persistEvents(this.events);
+          if (this.checkUpload()) this.scheduleUpload();
+        }
+      });
 
       document.addEventListener(
         "mousedown",
         (e) => {
           this.lastMouseDownEl = e.target;
         },
-        true,
+        true
       );
 
       const oldFn = window.pjax_to;
@@ -136,14 +200,18 @@ const RecordAndRerun = (() => {
             timestamp: new Date().toISOString(),
           };
           this.events.push(eventData);
+          this.lastClickedEl = event.target;
           persistEvents(this.events);
-          if (this.checkUpload()) await this.uploadEvents();
+          if (this.checkUpload()) this.scheduleUpload();
         }
       });
 
       document.addEventListener("contextmenu", (event) => {
         this.lastMouseDownEl = null;
-        if (this.recording) {
+        // mobile has its own Assert button - a touch-and-hold can still
+        // fire "contextmenu" on some devices, so keep this menu web-only
+        // to avoid showing two different assert menus
+        if (this.recording && isNode) {
           event.preventDefault();
           const selected = window.getSelection();
           const text = selected.toString().trim();
@@ -163,7 +231,7 @@ const RecordAndRerun = (() => {
                 timestamp: new Date().toISOString(),
               });
               persistEvents(this.events);
-              if (this.checkUpload()) await this.uploadEvents();
+              if (this.checkUpload()) this.scheduleUpload();
               selected.removeAllRanges();
             };
             menu.appendChild(textPresentItem);
@@ -176,7 +244,7 @@ const RecordAndRerun = (() => {
             // prompt for the text to assert not present
             let textNotPresent = prompt(
               "Enter the text to assert is not present:",
-              text,
+              text
             );
             if (textNotPresent && textNotPresent.trim().length > 0) {
               this.events.push({
@@ -185,7 +253,7 @@ const RecordAndRerun = (() => {
                 timestamp: new Date().toISOString(),
               });
               persistEvents(this.events);
-              if (this.checkUpload()) await this.uploadEvents();
+              if (this.checkUpload()) this.scheduleUpload();
             }
           };
           menu.appendChild(textNotPresentItem);
@@ -202,13 +270,80 @@ const RecordAndRerun = (() => {
               timestamp: new Date().toISOString(),
             });
             persistEvents(this.events);
-            if (this.checkUpload()) await this.uploadEvents();
+            if (this.checkUpload()) this.scheduleUpload();
             selected.removeAllRanges();
           };
           menu.appendChild(elementPresentItem);
           document.body.appendChild(menu);
         }
       });
+    }
+
+    // mobile fallback for the web assert-menu, which relies on
+    // "contextmenu" - unreliable on touch devices
+    async assertTextPresent() {
+      const text = (this.lastSelectedText || "").trim();
+      if (!text) {
+        const msg = "Select some text first, then tap Assert Text is present";
+        if (typeof notifyAlert === "function")
+          notifyAlert({ type: "danger", text: msg });
+        else console.error(msg);
+        return;
+      }
+      this.events.push({
+        type: "assert_text",
+        text,
+        timestamp: new Date().toISOString(),
+      });
+      persistEvents(this.events);
+      if (this.checkUpload()) this.scheduleUpload();
+    }
+
+    async assertTextNotPresent() {
+      const textNotPresent = prompt(
+        "Enter the text to assert is not present:",
+        this.lastSelectedText || ""
+      );
+      if (textNotPresent && textNotPresent.trim().length > 0) {
+        this.events.push({
+          type: "assert_text_not_present",
+          text: textNotPresent.trim(),
+          timestamp: new Date().toISOString(),
+        });
+        persistEvents(this.events);
+        if (this.checkUpload()) this.scheduleUpload();
+      }
+    }
+
+    // uses the last tapped element (tracked by the click listener) as the
+    // assert target, since there is no long-press/right-click equivalent
+    async assertElementPresent() {
+      if (!this.lastClickedEl) {
+        const msg = "Tap the element you want to assert first";
+        if (typeof notifyAlert === "function")
+          notifyAlert({ type: "danger", text: msg });
+        else console.error(msg);
+        return;
+      }
+      const selector = getUniqueSelector(this.lastClickedEl);
+      // that tap was only to pick the assert target, not a real
+      // interaction - drop the click event it generated
+      const lastEvent = this.events[this.events.length - 1];
+      if (
+        lastEvent &&
+        lastEvent.type === "click" &&
+        lastEvent.selector === selector
+      ) {
+        this.events.pop();
+      }
+      this.events.push({
+        type: "assert_element",
+        selector,
+        timestamp: new Date().toISOString(),
+      });
+      persistEvents(this.events);
+      this.lastClickedEl = null;
+      if (this.checkUpload()) this.scheduleUpload();
     }
 
     async startRecording() {
@@ -222,17 +357,31 @@ const RecordAndRerun = (() => {
           timestamp: new Date().toISOString(),
         });
         persistEvents(this.events);
-        if (this.checkUpload()) await this.uploadEvents();
+        if (this.checkUpload()) this.scheduleUpload();
       }
     }
 
     async stopRecording() {
+      if (this.uploadTimer) {
+        clearTimeout(this.uploadTimer);
+        this.uploadTimer = null;
+      }
       this.events = getPersistedEvents();
       await this.uploadEvents(true);
       this.recording = false;
     }
 
-    async uploadEvents(hasStopped = false) {
+    // uploads race over the network if triggered while a previous upload is
+    // still in flight, which can insert events out of chronological order -
+    // chain calls so each one waits for the last to finish first
+    uploadEvents(hasStopped = false) {
+      this.uploadChain = (this.uploadChain || Promise.resolve())
+        .catch(() => {})
+        .then(() => this._doUpload(hasStopped));
+      return this.uploadChain;
+    }
+
+    async _doUpload(hasStopped = false) {
       if (!hasStopped && this.events.length === 0) {
         console.log("No events to upload.");
         return;
@@ -270,12 +419,11 @@ const RecordAndRerun = (() => {
             const result = await response.json();
             if (result.error) throw new Error(result.error);
             console.log("Events uploaded successfully.");
-            this.events = [];
           } else
             throw new Error(
               `Failed to upload events${
                 this.api_token ? "" : ": No API token configured"
-              }`,
+              }`
             );
         } else {
           const response = await parent.saltcorn.mobileApp.api.apiCall({
@@ -285,34 +433,67 @@ const RecordAndRerun = (() => {
           });
           if (response.error) throw new Error(response.error);
           console.log("Events uploaded successfully.");
-          this.events = [];
         }
         this.inErrorState = false;
       } catch (error) {
         console.error("Error uploading events:", error);
+        // notifyAlert isn't defined on every page (e.g. the login page) -
+        // guard it so a missing global can't skip the requeue below and
+        // silently drop these events
         if (!this.inErrorState) {
-          notifyAlert({
-            type: "danger",
-            text: error.message || "Error uploading events",
-          });
+          if (typeof notifyAlert === "function") {
+            notifyAlert({
+              type: "danger",
+              text: error.message || "Error uploading events",
+            });
+          }
           this.inErrorState = true;
         }
         this.events = eventsToUpload.concat(this.events);
+        // keep the persisted copy in sync so a reload before the next
+        // retry doesn't lose these events
+        persistEvents(this.events);
       }
     }
   }
+
+  // figures out what changed between an old and new field value, even if
+  // the edit happened in the middle rather than at the end
+  const diffValues = (oldValue, newValue) => {
+    const maxPrefix = Math.min(oldValue.length, newValue.length);
+    let prefixLen = 0;
+    while (
+      prefixLen < maxPrefix &&
+      oldValue[prefixLen] === newValue[prefixLen]
+    ) {
+      prefixLen++;
+    }
+    const maxSuffix = Math.min(oldValue.length, newValue.length) - prefixLen;
+    let suffixLen = 0;
+    while (
+      suffixLen < maxSuffix &&
+      oldValue[oldValue.length - 1 - suffixLen] ===
+        newValue[newValue.length - 1 - suffixLen]
+    ) {
+      suffixLen++;
+    }
+    return {
+      removed: oldValue.slice(prefixLen, oldValue.length - suffixLen),
+      inserted: newValue.slice(prefixLen, newValue.length - suffixLen),
+    };
+  };
 
   const getUniqueSelector = (element) => {
     if (element === document.body) return "body";
     if (element.id) return `#${element.id}`;
     if (element.hasAttribute("data-row-id")) {
       return `${element.tagName.toLowerCase()}[data-row-id="${CSS.escape(
-        element.getAttribute("data-row-id"),
+        element.getAttribute("data-row-id")
       )}"]`;
     }
     if (element.hasAttribute("row-key")) {
       return `${element.tagName.toLowerCase()}[row-key="${CSS.escape(
-        element.getAttribute("row-key"),
+        element.getAttribute("row-key")
       )}"]`;
     }
     if (element.tagName === "BUTTON" && element.type === "submit") {
@@ -348,7 +529,7 @@ const RecordAndRerun = (() => {
         const parent = element.parentElement;
         if (parent) {
           const siblings = Array.from(parent.children).filter(
-            (el) => el.tagName === element.tagName,
+            (el) => el.tagName === element.tagName
           );
           const index = siblings.indexOf(element) + 1;
           const parentSelector = getUniqueSelector(parent);
@@ -444,12 +625,17 @@ const RecordAndRerun = (() => {
     return cfg.events || [];
   };
 
-  const showRecordingBox = (workflowName, stopCallback) => {
+  const showRecordingBox = (workflowName, stopCallback, isMobile) => {
     const box = document.createElement("div");
     const boxHtml = `
   <div class="recording-bar">
     <div class="recording-controls">
       <span>Recording: ${workflowName}</span>
+      ${
+        isMobile
+          ? `<button class="assert-btn" id="assert-menu-btn">Assert</button>`
+          : ""
+      }
       <button class="stop-btn" id="stop-recording-id">
         <svg viewBox="0 0 24 24">
           <rect x="6" y="6" width="12" height="12"></rect>
@@ -457,10 +643,37 @@ const RecordAndRerun = (() => {
         Stop
       </button>
     </div>
+    ${
+      isMobile
+        ? `<div class="assert-menu" id="assert-menu" style="display: none;">
+      <div id="assert-text-present-item">Assert Text is present</div>
+      <div id="assert-text-not-present-item">Assert Text is not present</div>
+      <div id="assert-element-present-item">Assert Element is present</div>
+    </div>`
+        : ""
+    }
   </div>`;
     box.innerHTML = boxHtml;
     const stopBtn = box.querySelector("#stop-recording-id");
     stopBtn.onclick = stopCallback;
+    if (isMobile) {
+      const menu = box.querySelector("#assert-menu");
+      box.querySelector("#assert-menu-btn").onclick = () => {
+        menu.style.display = menu.style.display === "none" ? "block" : "none";
+      };
+      box.querySelector("#assert-text-present-item").onclick = async () => {
+        menu.style.display = "none";
+        await RecordAndRerun.recorder.assertTextPresent();
+      };
+      box.querySelector("#assert-text-not-present-item").onclick = async () => {
+        menu.style.display = "none";
+        await RecordAndRerun.recorder.assertTextNotPresent();
+      };
+      box.querySelector("#assert-element-present-item").onclick = async () => {
+        menu.style.display = "none";
+        await RecordAndRerun.recorder.assertElementPresent();
+      };
+    }
     document.body.appendChild(box);
   };
 
@@ -478,5 +691,6 @@ const RecordAndRerun = (() => {
     recorder: new Recorder(getCfg()),
     showRecordingBox,
     removeRecordingBox,
+    isMobile: !isNode,
   };
 })();

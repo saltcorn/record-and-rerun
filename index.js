@@ -53,10 +53,12 @@ const configuration_workflow = () =>
             blurb:
               "This plugin allows recording user interactions (session) and rerunning them later. " +
               "For this you will need the Playwright framework installed on your server. " +
-              `Click 'install Playwright' to run ${code(
-                "npm exec install playwright",
-              )}.` +
-              "or skip it if your server already has Playwright installed.",
+              `You can either run both ${code(
+                "sudo npx playwright install-deps"
+              )} and ${code("npx playwright install")} yourself, ` +
+              `or just run the first one (it needs sudo, so this plugin can't do it for you) and then use the 'Install Playwright' button below to run ${code(
+                "npm exec playwright install"
+              )} for you. Skip this entirely if your server already has Playwright installed.`,
             fields: fields,
             additionalHeaders: [
               {
@@ -308,7 +310,7 @@ module.exports = {
           RecordAndRerun.setCfg({ ...oldCfg, recording: false});
           RecordAndRerun.removeRecordingBox();
         }
-      });
+      }, RecordAndRerun.isMobile);
     };
     asyncFn().catch((err) => {
       console.error("Error starting recording:", err);
@@ -322,7 +324,7 @@ module.exports = {
       const indicator = document.getElementById('recording-indicator');
       if (indicator) indicator.textContent = "";
     });
-  }`),
+  }`)
       ),
     },
   ],

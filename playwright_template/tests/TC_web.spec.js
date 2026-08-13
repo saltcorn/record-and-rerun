@@ -64,26 +64,38 @@ test.describe("generic Test Suite", () => {
           }
           break;
         }
+        case "select": {
+          if (!event.selector) {
+            console.log("No selector provided for select event, skipping.");
+            break;
+          }
+          console.log(`Selecting option: ${event.value} in ${event.selector}`);
+          await page.locator(event.selector).selectOption(event.value);
+          await page.waitForTimeout(200);
+          break;
+        }
         case "assert_text": {
           console.log(`Asserting text: ${event.text}`);
           const text = event.text;
           const content = await page.content();
-          const contains = content.includes(text);
+          // plain case-insensitive substring check - a regex built from
+          // raw recorded text would break on special characters like ( or $
+          const contains = content.toLowerCase().includes(text.toLowerCase());
           if (!contains && doBenchmark && currentBenchmark) {
             currentBenchmark.correct = 0;
           }
-          expect(content).toMatch(new RegExp(text, "i"));
+          expect(contains).toBe(true);
           break;
         }
         case "assert_text_not_present": {
           console.log(`Asserting text not present: ${event.text}`);
           const text = event.text;
           const content = await page.content();
-          const contains = content.includes(text);
+          const contains = content.toLowerCase().includes(text.toLowerCase());
           if (contains && doBenchmark && currentBenchmark) {
             currentBenchmark.correct = 0;
           }
-          expect(content).not.toMatch(new RegExp(text, "i"));
+          expect(contains).toBe(false);
           break;
         }
         case "assert_element": {
