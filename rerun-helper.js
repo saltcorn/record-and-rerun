@@ -29,7 +29,7 @@ class RerunHelper {
       html_report_file,
       html_report_directory,
     },
-    user,
+    user
   ) {
     this.wfTable = wfTable;
     this.wfRow = wfRow;
@@ -39,7 +39,7 @@ class RerunHelper {
     this.numIterations = num_iterations || 1;
     this.workflowName = wfRow[workflow_name_field].replace(
       /[^a-zA-Z0-9_-]/g,
-      "_",
+      "_"
     );
     if (workflow_type_field && wfRow[workflow_type_field])
       this.workflowType = wfRow[workflow_type_field];
@@ -50,6 +50,7 @@ class RerunHelper {
     this.successFlagField = success_flag_field;
     this.htmlReportDir = html_report_directory || "/";
     this.user = user;
+    this.lastError = null;
   }
 
   async rerun(wfRunId) {
@@ -63,14 +64,14 @@ class RerunHelper {
       await preparePlaywrightDir(
         this.testDir,
         this.workflowName,
-        await this.loadEvents(),
+        await this.loadEvents()
       );
       await runPlaywrightScript(
         this.testDir,
         this.numIterations,
         this.isBenchmark,
         this.workflowType,
-        this.user,
+        this.user
       );
 
       if (wfRunRow) {
@@ -86,6 +87,7 @@ class RerunHelper {
       }
     } catch (err) {
       getState().log(2, `Workflow rerun error: ${err.message}`);
+      this.lastError = err.message;
       await this.handleReport(wfRunRow);
       successFlag = false;
       if (wfRunRow && this.successFlagField)
@@ -105,7 +107,7 @@ class RerunHelper {
         const pathToServe = await copyHtmlReport(
           this.testDir,
           this.workflowName,
-          this.htmlReportDir,
+          this.htmlReportDir
         );
         wfRunRow[this.htmlReportFile] = pathToServe;
       }

@@ -59,3 +59,39 @@
   height: 14px;
   fill: white;
 }
+
+.assert-btn {
+  background: #1565c0;
+  border: none;
+  color: white;
+  padding: 6px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 14px;
+}
+.assert-btn:hover {
+  background: #0d47a1;
+}
+
+.assert-menu {
+  display: block;
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  margin-bottom: 8px;
+  width: max-content;
+  background: #fff;
+  color: #333;
+  border: 1px solid #ccc;
+  box-shadow: 2px 2px 5px rgba(0, 0, 0, 0.3);
+  padding: 10px;
+  border-radius: 5px;
+  z-index: 1000;
+}
+.assert-menu div {
+  padding: 5px 10px;
+  cursor: pointer;
+}
+.assert-menu div:hover {
+  background: #eee;
+}

@@ -13,6 +13,7 @@ const { getSafeSaltcornCmd } = require("@saltcorn/data/utils");
 const path = require("path");
 const fs = require("fs").promises;
 const { spawn } = require("child_process");
+const net = require("net");
 
 /**
  * Build options for the workflow configuration form
@@ -37,7 +38,7 @@ const cfgOpts = async (tableId) => {
     const refTable = Table.findOne({ id: ref.table_id });
     const jsonFields = refTable.fields.filter((f) => f.type?.name === "JSON");
     dataOpts.push(
-      jsonFields.map((f) => `${refTable.name}.${f.name}->${ref.name}`),
+      jsonFields.map((f) => `${refTable.name}.${f.name}->${ref.name}`)
     );
 
     const wfRunRelation = `${refTable.name}.${ref.name}`;
@@ -56,7 +57,7 @@ const cfgOpts = async (tableId) => {
   }
 
   const directoryOpts = (await File.find({ isDirectory: true })).map(
-    (d) => d.path_to_serve,
+    (d) => d.path_to_serve
   );
 
   return {
@@ -78,7 +79,7 @@ const parseDataField = (field) => {
   const match = field.match(/^([^.]+)\.([^-]+)->(.+)$/);
   if (!match) {
     throw new Error(
-      "data_field must be of the form ref_table.json_field->ref_field",
+      "data_field must be of the form ref_table.json_field->ref_field"
     );
   }
   const [, dataTblName, dataField, topFk] = match;
@@ -115,7 +116,7 @@ const preparePlaywrightDir = async (testDir, workflowName, events) => {
   });
   await fs.writeFile(
     path.join(testDir, "events.json"),
-    JSON.stringify({ events, workflow_name: workflowName }),
+    JSON.stringify({ events, workflow_name: workflowName })
   );
   const benchmarkDir = path.join(testDir, "benchmark_data");
   try {
@@ -129,12 +130,35 @@ const preparePlaywrightDir = async (testDir, workflowName, events) => {
   }
 };
 
-const prepMobileEnvParams = (user) => {
+/**
+ * ask the OS for a free port, so the throwaway server started for a mobile
+ * rerun doesn't collide with another instance of it, or anything else
+ * already running on a fixed port
+ */
+const getFreePort = () =>
+  new Promise((resolve, reject) => {
+    const server = net.createServer();
+    server.unref();
+    server.on("error", reject);
+    server.listen(0, () => {
+      const { port } = server.address();
+      server.close(() => resolve(port));
+    });
+  });
+
+const prepMobileEnvParams = async (user) => {
   const builderSettings = getState().getConfig("mobile_builder_settings") || {};
+  if (!builderSettings.entryPoint || !builderSettings.entryPointType) {
+    throw new Error(
+      "No mobile builder entry point is configured on this server. " +
+        "Set up the mobile app builder settings here before rerunning a mobile workflow."
+    );
+  }
+  const port = await getFreePort();
   return {
     ENTRY_POINT: builderSettings.entryPoint,
     ENTRY_POINT_TYPE: builderSettings.entryPointType,
-    SERVER_PATH: "http://localhost:3010",
+    SERVER_PATH: `http://localhost:${port}`,
     INCLUDED_PLUGINS: (builderSettings.includedPlugins || []).join(" "),
     USER: user.email,
     SALTCORN_COMMAND: getSafeSaltcornCmd(),
@@ -153,12 +177,14 @@ const runPlaywrightScript = async (
   numIterations,
   isBenchmark,
   workflowType,
-  user,
+  user
 ) => {
+  const mobileEnvParams =
+    workflowType === "Mobile" ? await prepMobileEnvParams(user) : {};
   const child = spawn(
     path.join(
       testDir,
-      `run_${workflowType === "Mobile" ? "mobile" : "web"}.bash`,
+      `run_${workflowType === "Mobile" ? "mobile" : "web"}.bash`
     ),
     {
       cwd: testDir,
@@ -168,16 +194,29 @@ const runPlaywrightScript = async (
         NUM_ITERATIONS: isBenchmark ? String(numIterations) : "1",
         DO_BENCHMARK: isBenchmark ? true : false,
         SCRIPT_DIR: testDir,
-        ...(workflowType === "Mobile" ? prepMobileEnvParams(user) : {}),
+        ...mobileEnvParams,
       },
-    },
+    }
   );
+  let output = "";
   await new Promise((resolve, reject) => {
     const state = getState();
-    child.on("exit", async (code) => {
+    // "close" (not "exit") guarantees stdout/stderr have been fully
+    // delivered, so the "output" buffer checked below is complete
+    child.on("close", async (code) => {
       if (code === 0) {
         state.log(5, "Playwright tests completed successfully");
         resolve();
+      } else if (output.includes("Executable doesn't exist")) {
+        // the browser binaries playwright downloads (separate from the
+        // OS-level libraries installed by 'install-deps') are missing
+        reject(
+          new Error(
+            "Playwright browsers are not installed on this server. Run " +
+              "'npx playwright install' (or use the 'Install Playwright' " +
+              "button in the plugin settings) and try again."
+          )
+        );
       } else reject(new Error(`Playwright tests failed with code ${code}`));
     });
     child.on("error", (err) => {
@@ -185,10 +224,14 @@ const runPlaywrightScript = async (
       reject(err);
     });
     child.stdout.on("data", (data) => {
-      state.log(5, data.toString().trim());
+      const text = data.toString();
+      output += text;
+      state.log(5, text.trim());
     });
     child.stderr.on("data", (data) => {
-      state.log(2, data.toString().trim());
+      const text = data.toString();
+      output += text;
+      state.log(2, text.trim());
     });
   });
 };
@@ -218,11 +261,11 @@ const insertWfRunRow = async (workflowId, wfRunTblRel) => {
 const copyHtmlReport = async (testDir, workflowName, targetDir) => {
   const reportFile = await File.from_file_on_disk(
     "index.html",
-    path.join(testDir, "my-report"),
+    path.join(testDir, "my-report")
   );
   const newPath = File.get_new_path(
     path.join(targetDir || "/", `${workflowName}.html`),
-    true,
+    true
   );
   const newName = path.basename(newPath);
   await reportFile.rename(newName);
@@ -242,7 +285,7 @@ const readBenchmarkFiles = async (testDir) => {
   let statsLength = undefined;
   for (const file of files) {
     const runStats = JSON.parse(
-      await fs.readFile(path.join(benchmarkDir, file), "utf8"),
+      await fs.readFile(path.join(benchmarkDir, file), "utf8")
     );
     if (!statsLength) statsLength = runStats.length;
     else if (statsLength !== runStats.length)
@@ -294,7 +337,7 @@ const calcStats = (allRunStats) => {
     for (const key of ["responseEnd", "domComplete", "LCP"]) {
       resultEntry[`${key}_mean`] = calcMean(element[key]);
       resultEntry[`${key}_standard_deviation`] = calcStandardDeviation(
-        element[key],
+        element[key]
       );
     }
     resultEntry.correct = Math.round(calcMean(element.correct));
@@ -335,14 +378,14 @@ const getTablesIfExists = async () => {
   if (!sessions || !sessionEvents || !sessionRuns) return null;
 
   const eventDataField = sessionEvents.fields.find(
-    (f) => f.type.name === "JSON",
+    (f) => f.type.name === "JSON"
   );
   const eventsToSessFk = sessionEvents
     .getForeignKeys()
     .find((fk) => fk.reftable_name === "session_recordings");
 
   const runResultsField = sessionRuns.fields.find(
-    (f) => f.type.name === "JSON",
+    (f) => f.type.name === "JSON"
   );
   const resultsToSessFk = sessionRuns
     .getForeignKeys()
@@ -373,7 +416,8 @@ const createTables = async () => {
     type: "String",
     required: true,
   });
-  await Field.create({ // web or mobile
+  await Field.create({
+    // web or mobile
     table: sessions,
     name: "recording_type",
     label: "Recording Type",
@@ -492,7 +536,7 @@ const createViews = async (
     sessionsListView,
     sessionRunsListView,
     benchmarkRunsListView,
-  },
+  }
 ) => {
   getState().log(5, "Creating session recording views");
   // recorder view ('Sessions Recorder')
@@ -596,7 +640,7 @@ const createViews = async (
                 minRole: 1,
                 spinner: true,
                 isFormula: {},
-                run_async: false,
+                run_async: true,
                 action_icon: "",
                 action_name: "rerun_user_workflow",
                 action_size: "",
@@ -632,6 +676,7 @@ const createViews = async (
                 minRole: 1,
                 spinner: true,
                 isFormula: {},
+                run_async: true,
                 action_icon: "",
                 action_name: "benchmark_user_workflow",
                 action_label: "",
@@ -666,7 +711,7 @@ const createViews = async (
             minRole: 1,
             spinner: true,
             isFormula: {},
-            run_async: false,
+            run_async: true,
             action_icon: "",
             action_name: "rerun_user_workflow",
             action_size: "",
@@ -698,7 +743,7 @@ const createViews = async (
             minRole: 1,
             spinner: true,
             isFormula: {},
-            run_async: false,
+            run_async: true,
             action_icon: "",
             action_name: "benchmark_user_workflow",
             action_size: "",
